@@ -1,6 +1,7 @@
 use std::time::Instant;
 use shakmaty::{Piece, Position, Square};
 use tiny_skia::{Color as SkColor, FilterQuality, Paint, PathBuilder, PixmapMut, PixmapPaint, Rect, Transform};
+
 use crate::assets::AssetManager;
 use crate::chess_sim::{ChessSimulator, SimState, SinglePieceAnim};
 
@@ -29,10 +30,10 @@ pub fn render_frame(
     let width = canvas.width() as f32;
     let height = canvas.height() as f32;
 
-    // 1. Rellenar toda la pantalla con el color de fondo armónico
+    // 1. Rellenar toda la pantalla con el color de fondo
     canvas.fill(bg_color);
 
-    // 2. Calcular tamaño fijo del tablero (con fallback adaptativo si la ventana es menor)
+    // 2. Calcular tamaño fijo del tablero
     let max_avail = (width * 0.92).min(height * 0.92);
     let target_board_dim = desired_board_size.min(max_avail);
     let tile_size = (target_board_dim / 8.0).floor().max(16.0);
@@ -43,7 +44,7 @@ pub fn render_frame(
     let board_y = ((height - board_total_h) / 2.0).floor();
 
     // 3. Marco flotante del tablero con bordes redondeados y sombra suave
-    let frame_pad = (tile_size * 0.35).floor().max(24.0);
+    let frame_pad = (tile_size * 0.28).floor().max(20.0);
     let frame_x = board_x - frame_pad;
     let frame_y = board_y - frame_pad;
     let frame_w = board_total_w + frame_pad * 2.0;
@@ -52,7 +53,7 @@ pub fn render_frame(
 
     // Sombra exterior amplia y difusa
     let mut shadow_paint = Paint::default();
-    shadow_paint.set_color(SkColor::from_rgba8(0, 0, 0, 85));
+    shadow_paint.set_color(SkColor::from_rgba8(0, 0, 0, 90));
     let mut pb_shadow = PathBuilder::new();
     add_rounded_rect(&mut pb_shadow, frame_x - 6.0, frame_y + 8.0, frame_w + 12.0, frame_h + 14.0, corner_radius + 4.0);
     if let Some(path) = pb_shadow.finish() {
@@ -79,42 +80,35 @@ pub fn render_frame(
         canvas.stroke_path(&path, &border_paint, &stroke, Transform::identity(), None);
     }
 
-    // 4. Dibujar las 64 baldosas con filtrado Bicúbico
-    let mut tile_paint = PixmapPaint::default();
-    tile_paint.quality = FilterQuality::Bicubic;
+    // 4. Dibujar el tablero oficial de Chess.com escalado con filtrado Bicúbico
+    let board_pixmap = assets.get_board(sim.board_style);
+    let scale = board_total_w / (board_pixmap.width() as f32);
+    let mut board_paint = PixmapPaint::default();
+    board_paint.quality = FilterQuality::Bicubic;
 
-    for rank_idx in 0..8 {
-        for file_idx in 0..8 {
-            let is_dark = (file_idx + rank_idx) % 2 == 0;
-            let tile_pix = assets.get_tile(sim.theme, is_dark);
+    let board_xform = Transform::from_scale(scale, scale).post_translate(board_x, board_y);
+    canvas.draw_pixmap(0, 0, board_pixmap.as_ref(), &board_paint, board_xform, None);
 
-            let tx = board_x + (file_idx as f32) * tile_size;
-            let ty = board_y + ((7 - rank_idx) as f32) * tile_size;
-
-            let scale_x = (tile_size + 0.6) / (tile_pix.width() as f32);
-            let scale_y = (tile_size + 0.6) / (tile_pix.height() as f32);
-
-            let xform = Transform::from_scale(scale_x, scale_y)
-                .post_translate(tx, ty);
-
-            canvas.draw_pixmap(
-                0,
-                0,
-                tile_pix.as_ref(),
-                &tile_paint,
-                xform,
-                None,
-            );
+    // Borde fino interior alrededor de las casillas
+    let mut inner_border_paint = Paint::default();
+    inner_border_paint.set_color(SkColor::from_rgba8(0, 0, 0, 80));
+    let mut inner_stroke = tiny_skia::Stroke::default();
+    inner_stroke.width = 1.0;
+    if let Some(r) = Rect::from_xywh(board_x, board_y, board_total_w, board_total_h) {
+        let mut pb_in = PathBuilder::new();
+        pb_in.push_rect(r);
+        if let Some(path) = pb_in.finish() {
+            canvas.stroke_path(&path, &inner_border_paint, &inner_stroke, Transform::identity(), None);
         }
     }
 
-    // Identificar movimiento activo
+    // 5. Identificar piezas animadas
     let animating_move = match sim.state {
         SimState::Animating(ref anim) => Some(anim),
         _ => None,
     };
 
-    // 5. Dibujar sombras en el suelo para las piezas en vuelo
+    // 6. Dibujar sombras de suelo de piezas en salto
     if let Some(anim) = animating_move {
         let progress = anim.progress(now);
         draw_ground_shadow(canvas, &anim.primary, progress, board_x, board_y, tile_size);
@@ -123,7 +117,7 @@ pub fn render_frame(
         }
     }
 
-    // 6. Dibujar piezas estáticas
+    // 7. Dibujar piezas estáticas
     let board = sim.pos.board();
     for sq in Square::ALL {
         let file_idx = sq.file() as u8;
@@ -165,32 +159,30 @@ pub fn render_frame(
         }
     }
 
-    // 7. Pieza capturada desvaneciéndose en su casilla
+    // 8. Pieza capturada desvaneciéndose en su casilla
     if let Some(anim) = animating_move {
         if let Some((captured_piece, (cap_f, cap_r))) = anim.captured {
             let progress = anim.progress(now);
-            let alpha = (1.0 - progress).clamp(0.0, 1.0);
-            if alpha > 0.02 {
-                draw_piece_at_square(
-                    canvas,
-                    assets,
-                    sim,
-                    captured_piece,
-                    cap_f as f32,
-                    cap_r as f32,
-                    0.0,
-                    board_x,
-                    board_y,
-                    tile_size,
-                    1.0,
-                    1.0,
-                    alpha,
-                );
-            }
+            let opacity = (1.0 - progress).clamp(0.0, 1.0);
+            draw_piece_at_square(
+                canvas,
+                assets,
+                sim,
+                captured_piece,
+                cap_f as f32,
+                cap_r as f32,
+                0.0,
+                board_x,
+                board_y,
+                tile_size,
+                1.0,
+                1.0,
+                opacity,
+            );
         }
     }
 
-    // 8. Dibujar las piezas en animación (Rey y Torre en enroque)
+    // 9. Dibujar las piezas en animación (Rey y Torre en enroque)
     if let Some(anim) = animating_move {
         let progress = anim.progress(now);
         draw_animated_piece(canvas, assets, sim, &anim.primary, progress, board_x, board_y, tile_size);
@@ -212,11 +204,11 @@ fn draw_ground_shadow(
     let jump = anim.jump_height(progress);
 
     let sx = board_x + cur_f * tile_size + tile_size * 0.5;
-    let sy = board_y + (7.0 - cur_r) * tile_size + tile_size * 0.88;
+    let sy = board_y + (7.0 - cur_r) * tile_size + tile_size * 0.85;
 
-    let shadow_w = (tile_size * 0.55) * (1.0 - jump * 0.28);
-    let shadow_h = (tile_size * 0.22) * (1.0 - jump * 0.28);
-    let shadow_alpha = (100.0 * (1.0 - jump * 0.50)) as u8;
+    let shadow_w = (tile_size * 0.52) * (1.0 - jump * 0.22);
+    let shadow_h = (tile_size * 0.20) * (1.0 - jump * 0.22);
+    let shadow_alpha = (90.0 * (1.0 - jump * 0.45)) as u8;
 
     let mut oval_paint = Paint::default();
     oval_paint.set_color_rgba8(0, 0, 0, shadow_alpha);
@@ -240,7 +232,7 @@ fn draw_animated_piece(
 ) {
     let (cur_f, cur_r) = anim.current_pos(progress);
     let jump = anim.jump_height(progress);
-    let arc_y = jump * (tile_size * 0.38);
+    let arc_y = jump * (tile_size * 0.35);
     let (squish_x, squish_y) = anim.jelly_scale(progress);
 
     draw_piece_at_square(
@@ -275,22 +267,19 @@ fn draw_piece_at_square(
     scale_factor_y: f32,
     opacity: f32,
 ) {
-    let pix = assets.get_piece(sim.theme, piece.color, piece.role);
+    let pix = assets.get_piece(sim.piece_style, piece.color, piece.role);
 
-    let reference_king_h = 124.0;
-    let base_scale = (tile_size * 0.80) / reference_king_h;
-
-    let scale_x = base_scale * scale_factor_x;
-    let scale_y = base_scale * scale_factor_y;
+    let scale_base = tile_size / (pix.width() as f32);
+    let scale_x = scale_base * scale_factor_x;
+    let scale_y = scale_base * scale_factor_y;
 
     let pw = (pix.width() as f32) * scale_x;
     let ph = (pix.height() as f32) * scale_y;
 
     let tx = board_x + file_f * tile_size + (tile_size - pw) / 2.0;
-    let ty = board_y + (7.0 - rank_f) * tile_size + (tile_size - ph) * 0.90 - arc_offset_y;
+    let ty = board_y + (7.0 - rank_f) * tile_size + (tile_size - ph) / 2.0 - arc_offset_y;
 
-    let xform = Transform::from_scale(scale_x, scale_y)
-        .post_translate(tx, ty);
+    let xform = Transform::from_scale(scale_x, scale_y).post_translate(tx, ty);
 
     let mut paint = PixmapPaint::default();
     paint.quality = FilterQuality::Bicubic;

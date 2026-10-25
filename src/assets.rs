@@ -2,191 +2,248 @@ use shakmaty::{Color, Role};
 use tiny_skia::Pixmap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BoardTheme {
-    Amber,
+pub enum BoardStyle {
     Blue,
-    Pink,
+    Green,
+    Walnut,
+    Glass,
+    IcySea,
+    Neon,
+    Tournament,
+    DarkWood,
+    Marble,
+    Bubblegum,
+    EightBit,
 }
 
-impl BoardTheme {
+impl BoardStyle {
     pub fn from_str_opt(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "amber" | "ambar" | "miel" | "madera" => Some(BoardTheme::Amber),
-            "blue" | "azul" | "glaciar" | "hielo" => Some(BoardTheme::Blue),
-            "pink" | "rosa" | "pastel" => Some(BoardTheme::Pink),
+        match s.to_lowercase().replace('-', "_").as_str() {
+            "blue" | "azul" => Some(BoardStyle::Blue),
+            "green" | "verde" => Some(BoardStyle::Green),
+            "walnut" | "wood" | "madera" => Some(BoardStyle::Walnut),
+            "glass" | "vidrio" | "cristal" => Some(BoardStyle::Glass),
+            "icy_sea" | "icy" | "glaciar" | "hielo" => Some(BoardStyle::IcySea),
+            "neon" | "cyber" => Some(BoardStyle::Neon),
+            "tournament" | "torneo" => Some(BoardStyle::Tournament),
+            "dark_wood" | "madera_oscura" => Some(BoardStyle::DarkWood),
+            "marble" | "marmol" => Some(BoardStyle::Marble),
+            "bubblegum" | "rosa" | "pink" => Some(BoardStyle::Bubblegum),
+            "8_bit" | "8bit" | "retro" => Some(BoardStyle::EightBit),
             _ => None,
         }
     }
 
     pub fn next(&self) -> Self {
         match self {
-            BoardTheme::Amber => BoardTheme::Blue,
-            BoardTheme::Blue => BoardTheme::Pink,
-            BoardTheme::Pink => BoardTheme::Amber,
+            BoardStyle::Blue => BoardStyle::Green,
+            BoardStyle::Green => BoardStyle::Walnut,
+            BoardStyle::Walnut => BoardStyle::Glass,
+            BoardStyle::Glass => BoardStyle::IcySea,
+            BoardStyle::IcySea => BoardStyle::Neon,
+            BoardStyle::Neon => BoardStyle::Tournament,
+            BoardStyle::Tournament => BoardStyle::DarkWood,
+            BoardStyle::DarkWood => BoardStyle::Marble,
+            BoardStyle::Marble => BoardStyle::Bubblegum,
+            BoardStyle::Bubblegum => BoardStyle::EightBit,
+            BoardStyle::EightBit => BoardStyle::Blue,
         }
     }
 }
 
-pub struct PieceAssets {
-    pub rook: Pixmap,
-    pub knight: Pixmap,
-    pub bishop: Pixmap,
-    pub queen: Pixmap,
-    pub king: Pixmap,
-    pub pawn: Pixmap,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PieceStyle {
+    Neo,
+    Classic,
+    Wood,
+    Glass,
+    IcySea,
+    Neon,
+    Tournament,
+    Alpha,
+    Bubblegum,
+    EightBit,
 }
 
-impl PieceAssets {
-    fn from_bytes(
-        rook_b: &[u8],
-        knight_b: &[u8],
-        bishop_b: &[u8],
-        queen_b: &[u8],
-        king_b: &[u8],
-        pawn_b: &[u8],
-    ) -> Self {
-        Self {
-            rook: Pixmap::decode_png(rook_b).expect("failed to decode rook"),
-            knight: Pixmap::decode_png(knight_b).expect("failed to decode knight"),
-            bishop: Pixmap::decode_png(bishop_b).expect("failed to decode bishop"),
-            queen: Pixmap::decode_png(queen_b).expect("failed to decode queen"),
-            king: Pixmap::decode_png(king_b).expect("failed to decode king"),
-            pawn: Pixmap::decode_png(pawn_b).expect("failed to decode pawn"),
+impl PieceStyle {
+    pub fn from_str_opt(s: &str) -> Option<Self> {
+        match s.to_lowercase().replace('-', "_").as_str() {
+            "neo" | "default" => Some(PieceStyle::Neo),
+            "classic" | "clasico" => Some(PieceStyle::Classic),
+            "wood" | "madera" => Some(PieceStyle::Wood),
+            "glass" | "vidrio" => Some(PieceStyle::Glass),
+            "icy_sea" | "icy" | "hielo" => Some(PieceStyle::IcySea),
+            "neon" => Some(PieceStyle::Neon),
+            "tournament" | "torneo" => Some(PieceStyle::Tournament),
+            "alpha" => Some(PieceStyle::Alpha),
+            "bubblegum" | "rosa" | "pink" => Some(PieceStyle::Bubblegum),
+            "8_bit" | "8bit" | "retro" => Some(PieceStyle::EightBit),
+            _ => None,
         }
     }
 
-    pub fn get(&self, role: Role) -> &Pixmap {
-        match role {
-            Role::Rook => &self.rook,
-            Role::Knight => &self.knight,
-            Role::Bishop => &self.bishop,
-            Role::Queen => &self.queen,
-            Role::King => &self.king,
-            Role::Pawn => &self.pawn,
+    pub fn next(&self) -> Self {
+        match self {
+            PieceStyle::Neo => PieceStyle::Classic,
+            PieceStyle::Classic => PieceStyle::Wood,
+            PieceStyle::Wood => PieceStyle::Glass,
+            PieceStyle::Glass => PieceStyle::IcySea,
+            PieceStyle::IcySea => PieceStyle::Neon,
+            PieceStyle::Neon => PieceStyle::Tournament,
+            PieceStyle::Tournament => PieceStyle::Alpha,
+            PieceStyle::Alpha => PieceStyle::Bubblegum,
+            PieceStyle::Bubblegum => PieceStyle::EightBit,
+            PieceStyle::EightBit => PieceStyle::Neo,
         }
     }
 }
 
-pub struct TileAssets {
-    pub dark: Pixmap,
-    pub light: Pixmap,
+pub struct PieceSet {
+    pub wk: Pixmap,
+    pub wq: Pixmap,
+    pub wr: Pixmap,
+    pub wb: Pixmap,
+    pub wn: Pixmap,
+    pub wp: Pixmap,
+
+    pub bk: Pixmap,
+    pub bq: Pixmap,
+    pub br: Pixmap,
+    pub bb: Pixmap,
+    pub bn: Pixmap,
+    pub bp: Pixmap,
+}
+
+impl PieceSet {
+    pub fn get(&self, color: Color, role: Role) -> &Pixmap {
+        match (color, role) {
+            (Color::White, Role::King) => &self.wk,
+            (Color::White, Role::Queen) => &self.wq,
+            (Color::White, Role::Rook) => &self.wr,
+            (Color::White, Role::Bishop) => &self.wb,
+            (Color::White, Role::Knight) => &self.wn,
+            (Color::White, Role::Pawn) => &self.wp,
+
+            (Color::Black, Role::King) => &self.bk,
+            (Color::Black, Role::Queen) => &self.bq,
+            (Color::Black, Role::Rook) => &self.br,
+            (Color::Black, Role::Bishop) => &self.bb,
+            (Color::Black, Role::Knight) => &self.bn,
+            (Color::Black, Role::Pawn) => &self.bp,
+        }
+    }
+}
+
+macro_rules! load_pieces {
+    ($path:literal) => {
+        PieceSet {
+            wk: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/wk.png"))).unwrap(),
+            wq: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/wq.png"))).unwrap(),
+            wr: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/wr.png"))).unwrap(),
+            wb: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/wb.png"))).unwrap(),
+            wn: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/wn.png"))).unwrap(),
+            wp: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/wp.png"))).unwrap(),
+
+            bk: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/bk.png"))).unwrap(),
+            bq: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/bq.png"))).unwrap(),
+            br: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/br.png"))).unwrap(),
+            bb: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/bb.png"))).unwrap(),
+            bn: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/bn.png"))).unwrap(),
+            bp: Pixmap::decode_png(include_bytes!(concat!("../assets/pieces/", $path, "/bp.png"))).unwrap(),
+        }
+    };
+}
+
+macro_rules! load_board {
+    ($path:literal) => {
+        Pixmap::decode_png(include_bytes!(concat!("../assets/boards/", $path, ".png"))).unwrap()
+    };
 }
 
 pub struct AssetManager {
-    // 6 Colores de piezas
-    pub pink_pieces: PieceAssets,
-    pub blue_pieces: PieceAssets,
-    pub lime_pieces: PieceAssets,
-    pub ochre_pieces: PieceAssets,
-    pub purple_pieces: PieceAssets,
-    pub cyan_pieces: PieceAssets,
+    // Tableros oficiales de Chess.com
+    pub board_blue: Pixmap,
+    pub board_green: Pixmap,
+    pub board_walnut: Pixmap,
+    pub board_glass: Pixmap,
+    pub board_icy_sea: Pixmap,
+    pub board_neon: Pixmap,
+    pub board_tournament: Pixmap,
+    pub board_dark_wood: Pixmap,
+    pub board_marble: Pixmap,
+    pub board_bubblegum: Pixmap,
+    pub board_8_bit: Pixmap,
 
-    // 3 Tableros de baldosas a juego
-    pub amber_tiles: TileAssets,
-    pub blue_tiles: TileAssets,
-    pub pink_tiles: TileAssets,
+    // Sets de piezas oficiales de Chess.com
+    pub pieces_neo: PieceSet,
+    pub pieces_classic: PieceSet,
+    pub pieces_wood: PieceSet,
+    pub pieces_glass: PieceSet,
+    pub pieces_icy_sea: PieceSet,
+    pub pieces_neon: PieceSet,
+    pub pieces_tournament: PieceSet,
+    pub pieces_alpha: PieceSet,
+    pub pieces_bubblegum: PieceSet,
+    pub pieces_8_bit: PieceSet,
 }
 
 impl AssetManager {
     pub fn load_embedded() -> Self {
         Self {
-            // Set 01 (Rosa & Azul)
-            pink_pieces: PieceAssets::from_bytes(
-                include_bytes!("../assets/sprites/set_01/pink/rook.png"),
-                include_bytes!("../assets/sprites/set_01/pink/knight.png"),
-                include_bytes!("../assets/sprites/set_01/pink/bishop.png"),
-                include_bytes!("../assets/sprites/set_01/pink/queen.png"),
-                include_bytes!("../assets/sprites/set_01/pink/king.png"),
-                include_bytes!("../assets/sprites/set_01/pink/pawn.png"),
-            ),
-            blue_pieces: PieceAssets::from_bytes(
-                include_bytes!("../assets/sprites/set_01/blue/rook.png"),
-                include_bytes!("../assets/sprites/set_01/blue/knight.png"),
-                include_bytes!("../assets/sprites/set_01/blue/bishop.png"),
-                include_bytes!("../assets/sprites/set_01/blue/queen.png"),
-                include_bytes!("../assets/sprites/set_01/blue/king.png"),
-                include_bytes!("../assets/sprites/set_01/blue/pawn.png"),
-            ),
+            board_blue: load_board!("blue"),
+            board_green: load_board!("green"),
+            board_walnut: load_board!("walnut"),
+            board_glass: load_board!("glass"),
+            board_icy_sea: load_board!("icy_sea"),
+            board_neon: load_board!("neon"),
+            board_tournament: load_board!("tournament"),
+            board_dark_wood: load_board!("dark_wood"),
+            board_marble: load_board!("marble"),
+            board_bubblegum: load_board!("bubblegum"),
+            board_8_bit: load_board!("8_bit"),
 
-            // Set 02 (Lima & Ocre)
-            lime_pieces: PieceAssets::from_bytes(
-                include_bytes!("../assets/sprites/set_02/lime/rook.png"),
-                include_bytes!("../assets/sprites/set_02/lime/knight.png"),
-                include_bytes!("../assets/sprites/set_02/lime/bishop.png"),
-                include_bytes!("../assets/sprites/set_02/lime/queen.png"),
-                include_bytes!("../assets/sprites/set_02/lime/king.png"),
-                include_bytes!("../assets/sprites/set_02/lime/pawn.png"),
-            ),
-            ochre_pieces: PieceAssets::from_bytes(
-                include_bytes!("../assets/sprites/set_02/ochre/rook.png"),
-                include_bytes!("../assets/sprites/set_02/ochre/knight.png"),
-                include_bytes!("../assets/sprites/set_02/ochre/bishop.png"),
-                include_bytes!("../assets/sprites/set_02/ochre/queen.png"),
-                include_bytes!("../assets/sprites/set_02/ochre/king.png"),
-                include_bytes!("../assets/sprites/set_02/ochre/pawn.png"),
-            ),
-
-            // Set 03 (Púrpura & Cian)
-            purple_pieces: PieceAssets::from_bytes(
-                include_bytes!("../assets/sprites/set_03/purple/rook.png"),
-                include_bytes!("../assets/sprites/set_03/purple/knight.png"),
-                include_bytes!("../assets/sprites/set_03/purple/bishop.png"),
-                include_bytes!("../assets/sprites/set_03/purple/queen.png"),
-                include_bytes!("../assets/sprites/set_03/purple/king.png"),
-                include_bytes!("../assets/sprites/set_03/purple/pawn.png"),
-            ),
-            cyan_pieces: PieceAssets::from_bytes(
-                include_bytes!("../assets/sprites/set_03/cyan/rook.png"),
-                include_bytes!("../assets/sprites/set_03/cyan/knight.png"),
-                include_bytes!("../assets/sprites/set_03/cyan/bishop.png"),
-                include_bytes!("../assets/sprites/set_03/cyan/queen.png"),
-                include_bytes!("../assets/sprites/set_03/cyan/king.png"),
-                include_bytes!("../assets/sprites/set_03/cyan/pawn.png"),
-            ),
-
-            // Baldosas
-            amber_tiles: TileAssets {
-                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/amber_dark.png")).unwrap(),
-                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/amber_light.png")).unwrap(),
-            },
-            blue_tiles: TileAssets {
-                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/blue_dark.png")).unwrap(),
-                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/blue_light.png")).unwrap(),
-            },
-            pink_tiles: TileAssets {
-                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/pink_dark.png")).unwrap(),
-                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/pink_light.png")).unwrap(),
-            },
+            pieces_neo: load_pieces!("neo"),
+            pieces_classic: load_pieces!("classic"),
+            pieces_wood: load_pieces!("wood"),
+            pieces_glass: load_pieces!("glass"),
+            pieces_icy_sea: load_pieces!("icy_sea"),
+            pieces_neon: load_pieces!("neon"),
+            pieces_tournament: load_pieces!("tournament"),
+            pieces_alpha: load_pieces!("alpha"),
+            pieces_bubblegum: load_pieces!("bubblegum"),
+            pieces_8_bit: load_pieces!("8_bit"),
         }
     }
 
-    pub fn get_piece(&self, theme: BoardTheme, color: Color, role: Role) -> &Pixmap {
-        match (theme, color) {
-            // Ámbar: Piezas Lima vs Ocre Dorado
-            (BoardTheme::Amber, Color::White) => self.lime_pieces.get(role),
-            (BoardTheme::Amber, Color::Black) => self.ochre_pieces.get(role),
-
-            // Azul Glaciar: Piezas Púrpura vs Cian Hielo
-            (BoardTheme::Blue, Color::White) => self.cyan_pieces.get(role),
-            (BoardTheme::Blue, Color::Black) => self.purple_pieces.get(role),
-
-            // Rosa Pastel: Piezas Rosa vs Azul Noche
-            (BoardTheme::Pink, Color::White) => self.pink_pieces.get(role),
-            (BoardTheme::Pink, Color::Black) => self.blue_pieces.get(role),
+    pub fn get_board(&self, style: BoardStyle) -> &Pixmap {
+        match style {
+            BoardStyle::Blue => &self.board_blue,
+            BoardStyle::Green => &self.board_green,
+            BoardStyle::Walnut => &self.board_walnut,
+            BoardStyle::Glass => &self.board_glass,
+            BoardStyle::IcySea => &self.board_icy_sea,
+            BoardStyle::Neon => &self.board_neon,
+            BoardStyle::Tournament => &self.board_tournament,
+            BoardStyle::DarkWood => &self.board_dark_wood,
+            BoardStyle::Marble => &self.board_marble,
+            BoardStyle::Bubblegum => &self.board_bubblegum,
+            BoardStyle::EightBit => &self.board_8_bit,
         }
     }
 
-    pub fn get_tile(&self, theme: BoardTheme, is_dark: bool) -> &Pixmap {
-        match theme {
-            BoardTheme::Amber => {
-                if is_dark { &self.amber_tiles.dark } else { &self.amber_tiles.light }
-            }
-            BoardTheme::Blue => {
-                if is_dark { &self.blue_tiles.dark } else { &self.blue_tiles.light }
-            }
-            BoardTheme::Pink => {
-                if is_dark { &self.pink_tiles.dark } else { &self.pink_tiles.light }
-            }
-        }
+    pub fn get_piece(&self, style: PieceStyle, color: Color, role: Role) -> &Pixmap {
+        let set = match style {
+            PieceStyle::Neo => &self.pieces_neo,
+            PieceStyle::Classic => &self.pieces_classic,
+            PieceStyle::Wood => &self.pieces_wood,
+            PieceStyle::Glass => &self.pieces_glass,
+            PieceStyle::IcySea => &self.pieces_icy_sea,
+            PieceStyle::Neon => &self.pieces_neon,
+            PieceStyle::Tournament => &self.pieces_tournament,
+            PieceStyle::Alpha => &self.pieces_alpha,
+            PieceStyle::Bubblegum => &self.pieces_bubblegum,
+            PieceStyle::EightBit => &self.pieces_8_bit,
+        };
+        set.get(color, role)
     }
 }

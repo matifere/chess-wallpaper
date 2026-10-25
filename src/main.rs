@@ -6,7 +6,7 @@ mod renderer;
 use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 
-use assets::{AssetManager, BoardTheme};
+use assets::{AssetManager, BoardStyle, PieceStyle};
 use chess_sim::{ChessSimulator, SimState};
 
 use smithay_client_toolkit::{
@@ -318,10 +318,34 @@ fn main() {
     let mut args = pico_args::Arguments::from_env();
 
     let theme_str: Option<String> = args.opt_value_from_str(["-t", "--theme"]).unwrap_or(None);
-    let selected_theme = theme_str
+    let (mut selected_board, mut selected_pieces) = match theme_str
         .as_deref()
-        .and_then(BoardTheme::from_str_opt)
-        .unwrap_or(BoardTheme::Blue); // Por defecto: Blue Glaciar (elegido por el usuario)
+        .unwrap_or("blue")
+        .to_lowercase()
+        .as_str()
+    {
+        "green" | "verde" => (BoardStyle::Green, PieceStyle::Neo),
+        "wood" | "walnut" | "madera" => (BoardStyle::Walnut, PieceStyle::Wood),
+        "glass" | "vidrio" => (BoardStyle::Glass, PieceStyle::Glass),
+        "icy" | "icy_sea" | "glaciar" | "hielo" => (BoardStyle::IcySea, PieceStyle::IcySea),
+        "neon" => (BoardStyle::Neon, PieceStyle::Neon),
+        "classic" | "tournament" | "torneo" => (BoardStyle::Tournament, PieceStyle::Classic),
+        "dark_wood" => (BoardStyle::DarkWood, PieceStyle::Wood),
+        "marble" | "marmol" => (BoardStyle::Marble, PieceStyle::Classic),
+        "bubblegum" | "rosa" | "pink" => (BoardStyle::Bubblegum, PieceStyle::Bubblegum),
+        "8_bit" | "8bit" | "retro" => (BoardStyle::EightBit, PieceStyle::EightBit),
+        _ => (BoardStyle::Blue, PieceStyle::Neo), // Por defecto: Chess.com Blue + Neo
+    };
+
+    let board_str: Option<String> = args.opt_value_from_str("--board").unwrap_or(None);
+    if let Some(b) = board_str.as_deref().and_then(BoardStyle::from_str_opt) {
+        selected_board = b;
+    }
+
+    let piece_str: Option<String> = args.opt_value_from_str("--pieces").unwrap_or(None);
+    if let Some(p) = piece_str.as_deref().and_then(PieceStyle::from_str_opt) {
+        selected_pieces = p;
+    }
 
     let rotate_theme = args.contains("--rotate");
 
@@ -338,7 +362,7 @@ fn main() {
 
     if let Ok(Some(path)) = args.opt_value_from_str::<_, String>("--snapshot") {
         let assets = AssetManager::load_embedded();
-        let sim = ChessSimulator::new(260, 500, selected_theme, false);
+        let sim = ChessSimulator::new(260, 500, selected_board, selected_pieces, false);
         let mut pixmap = tiny_skia::Pixmap::new(1920, 1080).unwrap();
         renderer::render_frame(&mut pixmap.as_mut(), &assets, &sim, bg_color, board_size, Instant::now());
         pixmap.save_png(&path).expect("Failed to save snapshot");
@@ -358,9 +382,9 @@ fn main() {
     let move_speed: u64 = args.opt_value_from_str(["-s", "--speed"]).unwrap_or(None).unwrap_or(default_speed);
     let move_delay: u64 = args.opt_value_from_str(["-d", "--delay"]).unwrap_or(None).unwrap_or(default_delay);
 
-    println!("Iniciando Chess Wallpaper (Rust)");
+    println!("Iniciando Chess Wallpaper (Rust - Chess.com Assets)");
     println!("Modo: {}", if is_window_mode { "Ventana de prueba (-w)" } else { "Fondo de escritorio Layer-Shell" });
-    println!("Tablero: {:?} (Fijo: {}) | Tamaño: {board_size}px", selected_theme, !rotate_theme);
+    println!("Tablero: {:?} | Piezas: {:?} (Rotar: {}) | Tamaño: {board_size}px", selected_board, selected_pieces, rotate_theme);
     println!("Color de fondo: rgba({}, {}, {}, {})", bg_color.red(), bg_color.green(), bg_color.blue(), bg_color.alpha());
     println!("Velocidad de salto: {move_speed} ms | Pausa entre jugadas: {move_delay} ms");
 
@@ -405,7 +429,7 @@ fn main() {
     };
 
     let assets = AssetManager::load_embedded();
-    let sim = ChessSimulator::new(move_speed, move_delay, selected_theme, rotate_theme);
+    let sim = ChessSimulator::new(move_speed, move_delay, selected_board, selected_pieces, rotate_theme);
 
     let mut app_state = AppState {
         registry_state: RegistryState::new(&globals),

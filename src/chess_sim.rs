@@ -1,9 +1,8 @@
 use std::time::{Duration, Instant};
-use rand::seq::SliceRandom;
-use rand::seq::IndexedRandom;
+use rand::seq::{IndexedRandom, SliceRandom};
 use shakmaty::san::San;
 use shakmaty::{Chess, Move, Piece, Position, Role};
-use crate::assets::BoardTheme;
+use crate::assets::{BoardStyle, PieceStyle};
 use crate::games::{get_master_games, GameData};
 
 #[derive(Clone, Debug)]
@@ -29,18 +28,18 @@ impl SinglePieceAnim {
 
     pub fn jelly_scale(&self, progress: f32) -> (f32, f32) {
         let p = progress;
-        if p < 0.20 {
-            let t = p / 0.20;
-            let stretch = (t * std::f32::consts::PI).sin() * 0.12;
+        if p < 0.25 {
+            let t = p / 0.25;
+            let stretch = (t * std::f32::consts::PI).sin() * 0.08;
             (1.0 - stretch * 0.5, 1.0 + stretch)
         } else if p < 0.70 {
             (1.0, 1.0)
         } else {
             let t = (p - 0.70) / 0.30;
-            let decay = (-4.0 * t).exp();
-            let wave = (t * std::f32::consts::PI * 3.5).sin();
-            let wobble = decay * wave * 0.24;
-            (1.0 + wobble, (1.0 - wobble * 0.85).max(0.6))
+            let decay = (-5.0 * t).exp();
+            let wave = (t * std::f32::consts::PI * 3.0).sin();
+            let wobble = decay * wave * 0.12;
+            (1.0 + wobble, (1.0 - wobble * 0.8).max(0.75))
         }
     }
 }
@@ -75,7 +74,8 @@ pub enum SimState {
 pub struct ChessSimulator {
     pub pos: Chess,
     pub state: SimState,
-    pub theme: BoardTheme,
+    pub board_style: BoardStyle,
+    pub piece_style: PieceStyle,
     pub rotate_theme: bool,
     pub move_duration: Duration,
     pub pause_between_moves: Duration,
@@ -88,14 +88,20 @@ pub struct ChessSimulator {
 }
 
 impl ChessSimulator {
-    pub fn new(move_ms: u64, delay_ms: u64, theme: BoardTheme, rotate_theme: bool) -> Self {
+    pub fn new(
+        move_ms: u64,
+        delay_ms: u64,
+        board_style: BoardStyle,
+        piece_style: PieceStyle,
+        rotate_theme: bool,
+    ) -> Self {
         let games = get_master_games();
         let mut playlist: Vec<usize> = (0..games.len()).collect();
         let mut rng = rand::rng();
         playlist.shuffle(&mut rng);
 
         println!("Cargadas {} partidas maestras históricas.", games.len());
-        println!("Tema de tablero seleccionado: {:?}", theme);
+        println!("Tablero: {:?} | Piezas: {:?}", board_style, piece_style);
         println!("Partida inicial [1/{}]: '{}'", games.len(), games[playlist[0]].name);
 
         Self {
@@ -103,7 +109,8 @@ impl ChessSimulator {
             state: SimState::Idle {
                 next_move_at: Instant::now() + Duration::from_millis(400),
             },
-            theme,
+            board_style,
+            piece_style,
             rotate_theme,
             move_duration: Duration::from_millis(move_ms),
             pause_between_moves: Duration::from_millis(delay_ms),
@@ -307,16 +314,18 @@ impl ChessSimulator {
         }
 
         if self.rotate_theme {
-            self.theme = self.theme.next();
+            self.board_style = self.board_style.next();
+            self.piece_style = self.piece_style.next();
         }
 
         let next_idx = self.playlist[self.playlist_cursor];
         println!(
-            "Nueva partida [{}/{}]: '{}' (Tema: {:?})",
+            "Nueva partida [{}/{}]: '{}' (Tablero: {:?}, Piezas: {:?})",
             self.playlist_cursor + 1,
             self.playlist.len(),
             self.games[next_idx].name,
-            self.theme
+            self.board_style,
+            self.piece_style
         );
 
         self.state = SimState::Idle {
@@ -331,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_castling_animation() {
-        let mut sim = ChessSimulator::new(260, 500, BoardTheme::Pink, false);
+        let mut sim = ChessSimulator::new(260, 500, BoardStyle::Blue, PieceStyle::Neo, false);
         // Forzar a la Opera Game (índice donde esté en la playlist)
         let opera_idx = sim.games.iter().position(|g| g.name.contains("Opera Game")).unwrap();
         sim.playlist_cursor = sim.playlist.iter().position(|&idx| idx == opera_idx).unwrap();
