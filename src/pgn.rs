@@ -410,4 +410,21 @@ mod tests {
         assert_eq!(games[0].white, "Alpha");
         assert_eq!(games[1].white, "Gamma");
     }
+
+    #[test]
+    fn test_uci_conversion() {
+        let pos = Chess::default();
+        let san: San = "e4".parse().unwrap();
+        let m = san.to_move(&pos).unwrap();
+        let uci = m.to_uci(shakmaty::CastlingMode::Standard).to_string();
+        assert_eq!(uci, "e2e4");
+
+        // Enroque corto en posición adecuada
+        let fen = "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5";
+        let fen_pos: Chess = fen.parse::<shakmaty::fen::Fen>().unwrap().into_position(shakmaty::CastlingMode::Standard).unwrap();
+        let castle_san: San = "O-O".parse().unwrap();
+        let castle_m = castle_san.to_move(&fen_pos).unwrap();
+        let castle_uci = castle_m.to_uci(shakmaty::CastlingMode::Standard).to_string();
+        assert_eq!(castle_uci, "e1g1");
+    }
 }

@@ -375,6 +375,9 @@ pub struct ChessSimulator {
     pub current_eval_pct: f32,
     pub target_eval_pct: f32,
     pub current_eval_score: f32,
+    pub current_mate_in: Option<i32>,
+    pub current_classification: Option<crate::engine::MoveClassification>,
+    pub engine: crate::engine::EngineManager,
 
     pub games: Vec<GameData>,
     pub playlist: Vec<usize>,
@@ -412,6 +415,16 @@ impl ChessSimulator {
             first_game.year
         );
 
+        let engine = crate::engine::EngineManager::new();
+        if !playlist.is_empty() {
+            let first_idx = playlist[0];
+            engine.request_analysis(first_idx, games[first_idx].moves.clone());
+            if playlist.len() > 1 {
+                let second_idx = playlist[1];
+                engine.request_analysis(second_idx, games[second_idx].moves.clone());
+            }
+        }
+
         let initial_pos = Chess::default();
         let initial_score = evaluate_position(&initial_pos);
         let initial_pct = eval_to_white_pct(initial_score);
@@ -431,6 +444,9 @@ impl ChessSimulator {
             current_eval_pct: initial_pct,
             target_eval_pct: initial_pct,
             current_eval_score: initial_score,
+            current_mate_in: None,
+            current_classification: None,
+            engine,
             games,
             playlist,
             playlist_cursor: 0,
@@ -444,6 +460,20 @@ impl ChessSimulator {
             self.current_eval_pct += eval_diff * 0.12;
         } else {
             self.current_eval_pct = self.target_eval_pct;
+        }
+
+        if self.current_classification.is_none() && self.current_move_index > 0 {
+            let current_game_idx = self.playlist[self.playlist_cursor];
+            let move_idx = self.current_move_index - 1;
+            if let Some(analysis) = self.engine.get_analysis(current_game_idx) {
+                if move_idx < analysis.len() {
+                    let pos_eval = &analysis[move_idx];
+                    self.current_eval_score = pos_eval.eval_score;
+                    self.target_eval_pct = pos_eval.eval_pct;
+                    self.current_mate_in = pos_eval.mate_in;
+                    self.current_classification = Some(pos_eval.classification);
+                }
+            }
         }
 
         match self.state {
@@ -650,9 +680,24 @@ impl ChessSimulator {
 
         self.pos.play_unchecked(chosen_move);
 
-        let score = evaluate_position(&self.pos);
-        self.current_eval_score = score;
-        self.target_eval_pct = eval_to_white_pct(score);
+        let current_game_idx = self.playlist[self.playlist_cursor];
+        let move_idx = self.current_move_index - 1;
+
+        if let Some(analysis) = self.engine.get_analysis(current_game_idx) {
+            if move_idx < analysis.len() {
+                let pos_eval = &analysis[move_idx];
+                self.current_eval_score = pos_eval.eval_score;
+                self.target_eval_pct = pos_eval.eval_pct;
+                self.current_mate_in = pos_eval.mate_in;
+                self.current_classification = Some(pos_eval.classification);
+            }
+        } else {
+            let score = evaluate_position(&self.pos);
+            self.current_eval_score = score;
+            self.target_eval_pct = eval_to_white_pct(score);
+            self.current_mate_in = None;
+            self.current_classification = None;
+        }
 
         self.state = SimState::Animating(anim);
     }
@@ -661,6 +706,8 @@ impl ChessSimulator {
         self.pos = Chess::default();
         self.current_move_index = 0;
         self.last_move = None;
+        self.current_classification = None;
+        self.current_mate_in = None;
 
         let initial_score = evaluate_position(&self.pos);
         self.current_eval_score = initial_score;
@@ -685,6 +732,10 @@ impl ChessSimulator {
         }
 
         let next_idx = self.playlist[self.playlist_cursor];
+        self.engine.request_analysis(next_idx, self.games[next_idx].moves.clone());
+        let peek_cursor = (self.playlist_cursor + 1) % self.playlist.len();
+        let peek_idx = self.playlist[peek_cursor];
+        self.engine.request_analysis(peek_idx, self.games[peek_idx].moves.clone());
         let next_game = &self.games[next_idx];
         println!(
             "Nueva partida [{}/{}]: '{} vs {}' - {} ({}) (Tablero: {:?}, Piezas: {:?})",

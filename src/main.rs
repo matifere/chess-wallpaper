@@ -1,5 +1,6 @@
 mod assets;
 mod chess_sim;
+mod engine;
 mod games;
 mod pgn;
 mod renderer;

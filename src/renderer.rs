@@ -178,7 +178,20 @@ fn draw_eval_bar(
     // Puntuación numérica en la barra (e.g. +1.4 o M1)
     let score = sim.current_eval_score;
     let font_size = 9.5;
-    if sim.pos.is_checkmate() {
+    if let Some(mate) = sim.current_mate_in {
+        let (mate_str, is_white_win) = if mate > 0 {
+            (format!("M{}", mate), true)
+        } else {
+            (format!("-M{}", -mate), false)
+        };
+        let tw = measure_text(&assets.ui_font, &mate_str, font_size);
+        let tx = x + (w - tw) / 2.0;
+        if is_white_win {
+            draw_text(canvas, &assets.ui_font, &mate_str, tx, y + h - 6.0, font_size, SkColor::from_rgba8(20, 22, 28, 255));
+        } else {
+            draw_text(canvas, &assets.ui_font, &mate_str, tx, y + 14.0, font_size, SkColor::from_rgba8(240, 240, 245, 255));
+        }
+    } else if sim.pos.is_checkmate() {
         let (mate_str, is_white_win) = if score > 0.0 { ("M1", true) } else { ("-M1", false) };
         let tw = measure_text(&assets.ui_font, mate_str, font_size);
         let tx = x + (w - tw) / 2.0;
@@ -218,6 +231,7 @@ fn draw_player_badge(
     elo: Option<&str>,
     top_meta: &str,
     sub_meta: Option<&str>,
+    classification: Option<crate::engine::MoveClassification>,
     captured: &crate::chess_sim::CapturedPieces,
     material_advantage: i32,
     x: f32,
@@ -349,7 +363,7 @@ fn draw_player_badge(
         draw_text(canvas, &assets.ui_font, &pill_text, pill_x + pill_pad, pill_base_y, pill_font_size, pill_color);
     }
 
-    // 7. Metadatos a la derecha (Fila 1: Apertura/Jugada, Fila 2: Evento/SAN)
+    // 7. Metadatos a la derecha (Fila 1: Apertura/Jugada, Fila 2: Evento/SAN + Insignia Chess.com)
     let meta_font_size = (h * 0.28).round().clamp(11.0, 13.0);
     let top_w = measure_text(&assets.ui_font, top_meta, meta_font_size);
     let right_pad = 14.0;
@@ -361,10 +375,45 @@ fn draw_player_badge(
     if let Some(sub_text) = sub_meta {
         let sub_font_size = meta_font_size - 1.0;
         let sub_w = measure_text(&assets.ui_font, sub_text, sub_font_size);
-        let sub_x = x + w - sub_w - right_pad;
-        let sub_baseline = y + h * 0.80;
-        let sub_color = SkColor::from_rgba8(130, 142, 168, 255);
-        draw_text(canvas, &assets.ui_font, sub_text, sub_x, sub_baseline, sub_font_size, sub_color);
+
+        if let Some(cls) = classification {
+            let symbol = cls.symbol();
+            let label = cls.label();
+            let badge_text = if symbol.is_empty() {
+                label.to_string()
+            } else {
+                format!("{} {}", symbol, label)
+            };
+            let badge_font_size = 10.0;
+            let badge_tw = measure_text(&assets.ui_font, &badge_text, badge_font_size);
+            let badge_pad_x = 7.0;
+            let badge_w = badge_tw + badge_pad_x * 2.0;
+            let badge_h = 18.0;
+
+            let badge_x = x + w - badge_w - right_pad;
+            let badge_y = y + h * 0.58;
+
+            let mut badge_bg = Paint::default();
+            badge_bg.set_color(cls.bg_color());
+            let mut pb_badge = PathBuilder::new();
+            add_rounded_rect(&mut pb_badge, badge_x, badge_y, badge_w, badge_h, 4.5);
+            if let Some(path) = pb_badge.finish() {
+                canvas.fill_path(&path, &badge_bg, tiny_skia::FillRule::Winding, Transform::identity(), None);
+            }
+
+            let badge_base_y = badge_y + badge_h * 0.74;
+            draw_text(canvas, &assets.ui_font, &badge_text, badge_x + badge_pad_x, badge_base_y, badge_font_size, cls.text_color());
+
+            let sub_x = badge_x - sub_w - 8.0;
+            let sub_baseline = y + h * 0.78;
+            let sub_color = SkColor::from_rgba8(130, 142, 168, 255);
+            draw_text(canvas, &assets.ui_font, sub_text, sub_x, sub_baseline, sub_font_size, sub_color);
+        } else {
+            let sub_x = x + w - sub_w - right_pad;
+            let sub_baseline = y + h * 0.78;
+            let sub_color = SkColor::from_rgba8(130, 142, 168, 255);
+            draw_text(canvas, &assets.ui_font, sub_text, sub_x, sub_baseline, sub_font_size, sub_color);
+        }
     }
 }
 
@@ -644,6 +693,61 @@ pub fn render_frame(
         }
     }
 
+    // 9.1. Badge de jugada estilo Chess.com sobre la casilla de destino
+    if let (Some((_, to)), Some(cls)) = (sim.last_move, sim.current_classification) {
+        let to_f = to.0 as f32;
+        let to_r = to.1 as f32;
+
+        let badge_radius = (tile_size * 0.16).clamp(8.0, 11.0);
+        let cx = board_x + to_f * tile_size + tile_size - badge_radius - 2.0;
+        let cy = board_y + (7.0 - to_r) * tile_size + badge_radius + 2.0;
+
+        // Sombra suave del icono circular
+        let mut shadow_paint = Paint::default();
+        shadow_paint.set_color(SkColor::from_rgba8(0, 0, 0, 110));
+        let mut pb_shadow = PathBuilder::new();
+        if let Some(r) = Rect::from_xywh(cx - badge_radius - 1.0, cy - badge_radius + 1.5, badge_radius * 2.0 + 2.0, badge_radius * 2.0 + 2.0) {
+            pb_shadow.push_oval(r);
+            if let Some(path) = pb_shadow.finish() {
+                canvas.fill_path(&path, &shadow_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+            }
+        }
+
+        // Círculo del color oficial de Chess.com
+        let mut circle_paint = Paint::default();
+        circle_paint.set_color(cls.bg_color());
+        let mut pb_circ = PathBuilder::new();
+        if let Some(r) = Rect::from_xywh(cx - badge_radius, cy - badge_radius, badge_radius * 2.0, badge_radius * 2.0) {
+            pb_circ.push_oval(r);
+            if let Some(path) = pb_circ.finish() {
+                canvas.fill_path(&path, &circle_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+            }
+        }
+
+        // Borde fino blanco translúcido
+        let mut border_paint = Paint::default();
+        border_paint.set_color(SkColor::from_rgba8(255, 255, 255, 140));
+        let mut stroke = tiny_skia::Stroke::default();
+        stroke.width = 1.0;
+        let mut pb_b = PathBuilder::new();
+        if let Some(r) = Rect::from_xywh(cx - badge_radius, cy - badge_radius, badge_radius * 2.0, badge_radius * 2.0) {
+            pb_b.push_oval(r);
+            if let Some(path) = pb_b.finish() {
+                canvas.stroke_path(&path, &border_paint, &stroke, Transform::identity(), None);
+            }
+        }
+
+        // Símbolo del glifo (ej. !!, ★, ?!, ??, ✔)
+        let sym = cls.symbol();
+        if !sym.is_empty() {
+            let sym_font_size = (badge_radius * 1.1).round().clamp(8.0, 11.0);
+            let tw = measure_text(&assets.ui_font, sym, sym_font_size);
+            let tx = cx - tw / 2.0;
+            let ty = cy + sym_font_size * 0.36;
+            draw_text(canvas, &assets.ui_font, sym, tx, ty, sym_font_size, cls.text_color());
+        }
+    }
+
     // 10. Badges de jugadores estilo retransmisión
     let badge_h = (tile_size * 0.58).floor().clamp(44.0, 50.0);
     let badge_pad = 12.0;
@@ -662,6 +766,10 @@ pub fn render_frame(
             SimState::GameOver { .. } => (false, false),
             _ => (current_turn == Color::Black, current_turn == Color::White),
         };
+
+        let last_move_was_white = current_turn == Color::Black;
+        let white_cls = if last_move_was_white { sim.current_classification } else { None };
+        let black_cls = if !last_move_was_white { sim.current_classification } else { None };
 
         let (white_cap, black_cap, diff) = sim.captured_pieces();
         let white_advantage = diff.max(0);
@@ -689,6 +797,7 @@ pub fn render_frame(
             game.black_elo.as_deref(),
             &top_meta,
             top_sub_meta.as_deref(),
+            black_cls,
             &black_cap,
             black_advantage,
             badge_x,
@@ -719,6 +828,7 @@ pub fn render_frame(
             game.white_elo.as_deref(),
             &bot_meta,
             bot_sub_meta.as_deref(),
+            white_cls,
             &white_cap,
             white_advantage,
             badge_x,
