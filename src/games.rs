@@ -1,22 +1,67 @@
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct GameData {
+    pub white: String,
+    pub black: String,
+    pub white_elo: Option<String>,
+    pub black_elo: Option<String>,
+    pub event: String,
+    pub site: Option<String>,
+    pub date: Option<String>,
+    pub year: u16,
+    pub eco: Option<String>,
+    pub opening: Option<String>,
+    pub result: String,
+    pub termination: String,
+    pub moves: Vec<String>,
+}
+
+pub struct MasterGameStatic {
     pub white: &'static str,
     pub black: &'static str,
+    pub white_elo: Option<&'static str>,
+    pub black_elo: Option<&'static str>,
     pub event: &'static str,
     pub year: u16,
+    pub eco: Option<&'static str>,
+    pub opening: Option<&'static str>,
     pub result: &'static str,
     pub termination: &'static str,
     pub moves: &'static [&'static str],
 }
 
-pub fn get_master_games() -> Vec<GameData> {
-    vec![
-        // 1. The Opera Game: Morphy vs Duke of Brunswick (1858)
+impl MasterGameStatic {
+    pub fn to_game_data(&self) -> GameData {
         GameData {
+            white: self.white.to_string(),
+            black: self.black.to_string(),
+            white_elo: self.white_elo.map(String::from),
+            black_elo: self.black_elo.map(String::from),
+            event: self.event.to_string(),
+            site: None,
+            date: None,
+            year: self.year,
+            eco: self.eco.map(String::from),
+            opening: self.opening.map(String::from),
+            result: self.result.to_string(),
+            termination: self.termination.to_string(),
+            moves: self.moves.iter().map(|&s| s.to_string()).collect(),
+        }
+    }
+}
+
+pub fn get_master_games() -> Vec<GameData> {
+    let static_games: &[MasterGameStatic] = &[
+        // 1. The Opera Game: Morphy vs Duke of Brunswick (1858)
+        MasterGameStatic {
             white: "Paul Morphy",
             black: "Duque de Brunswick",
+            white_elo: Some("2700*"),
+            black_elo: None,
             event: "The Opera Game",
             year: 1858,
+            eco: Some("C41"),
+            opening: Some("Defensa Philidor"),
             result: "1-0",
             termination: "Jaque mate",
             moves: &[
@@ -27,11 +72,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 2. The Immortal Game: Adolf Anderssen vs Lionel Kieseritzky (1851)
-        GameData {
+        MasterGameStatic {
             white: "Adolf Anderssen",
             black: "Lionel Kieseritzky",
+            white_elo: Some("2600*"),
+            black_elo: None,
             event: "The Immortal Game",
             year: 1851,
+            eco: Some("C33"),
+            opening: Some("Gambito de Rey"),
             result: "1-0",
             termination: "Jaque mate",
             moves: &[
@@ -43,11 +92,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 3. The Evergreen Game: Adolf Anderssen vs Jean Dufresne (1852)
-        GameData {
+        MasterGameStatic {
             white: "Adolf Anderssen",
             black: "Jean Dufresne",
+            white_elo: Some("2600*"),
+            black_elo: None,
             event: "The Evergreen Game",
             year: 1852,
+            eco: Some("C52"),
+            opening: Some("Gambito Evans"),
             result: "1-0",
             termination: "Jaque mate",
             moves: &[
@@ -59,11 +112,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 4. Reti vs Tartakower: Double Check Mate (1910)
-        GameData {
+        MasterGameStatic {
             white: "Richard Réti",
             black: "Savielly Tartakower",
+            white_elo: Some("2550*"),
+            black_elo: Some("2550*"),
             event: "Double Check Mate",
             year: 1910,
+            eco: Some("B15"),
+            opening: Some("Defensa Caro-Kann"),
             result: "1-0",
             termination: "Jaque mate",
             moves: &[
@@ -72,11 +129,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 5. The Game of the Century: Donald Byrne vs Bobby Fischer (1956)
-        GameData {
+        MasterGameStatic {
             white: "Donald Byrne",
             black: "Bobby Fischer",
+            white_elo: Some("2500*"),
+            black_elo: Some("2600*"),
             event: "The Game of the Century",
             year: 1956,
+            eco: Some("D92"),
+            opening: Some("Defensa Grünfeld"),
             result: "0-1",
             termination: "Jaque mate",
             moves: &[
@@ -92,11 +153,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 6. Edward Lasker vs Sir George Thomas (1912) - The King Hunt
-        GameData {
+        MasterGameStatic {
             white: "Edward Lasker",
             black: "Sir George Thomas",
+            white_elo: Some("2500*"),
+            black_elo: None,
             event: "The King Hunt",
             year: 1912,
+            eco: Some("A83"),
+            opening: Some("Defensa Holandesa"),
             result: "1-0",
             termination: "Jaque mate",
             moves: &[
@@ -107,11 +172,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 7. Akiba Rubinstein's Immortal Game vs Georg Rotlewi (1907)
-        GameData {
+        MasterGameStatic {
             white: "Georg Rotlewi",
             black: "Akiba Rubinstein",
+            white_elo: None,
+            black_elo: Some("2700*"),
             event: "Rubinstein's Immortal",
             year: 1907,
+            eco: Some("D40"),
+            opening: Some("Gambito de Dama"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -123,11 +192,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 8. Mikhail Tal vs Bent Larsen (1965) - Tal's Knight Sacrifice
-        GameData {
+        MasterGameStatic {
             white: "Mikhail Tal",
             black: "Bent Larsen",
+            white_elo: Some("2700*"),
+            black_elo: Some("2660*"),
             event: "Tal's Attack",
             year: 1965,
+            eco: Some("B57"),
+            opening: Some("Defensa Siciliana Sozin"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -140,11 +213,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 9. Young Magnus Carlsen vs Sipke Ernst (2004)
-        GameData {
+        MasterGameStatic {
             white: "Magnus Carlsen",
             black: "Sipke Ernst",
+            white_elo: Some("2484"),
+            black_elo: Some("2474"),
             event: "Young Magnus",
             year: 2004,
+            eco: Some("B19"),
+            opening: Some("Defensa Caro-Kann Clásica"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -157,11 +234,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 10. Deep Blue vs Garry Kasparov (1997) - Game 6
-        GameData {
+        MasterGameStatic {
             white: "Deep Blue",
             black: "Garry Kasparov",
+            white_elo: Some("IBM 2800"),
+            black_elo: Some("2785"),
             event: "Match Game 6",
             year: 1997,
+            eco: Some("B17"),
+            opening: Some("Defensa Caro-Kann Steinitz"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -172,11 +253,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 11. Emanuel Lasker vs Johann Bauer (1889) - Double Bishop Sacrifice
-        GameData {
+        MasterGameStatic {
             white: "Emanuel Lasker",
             black: "Johann Bauer",
+            white_elo: Some("2700*"),
+            black_elo: None,
             event: "Double Bishop Sacrifice",
             year: 1889,
+            eco: Some("A01"),
+            opening: Some("Apertura Bird"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -189,11 +274,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 12. Nigel Short vs Jan Timman (1991) - The King March
-        GameData {
+        MasterGameStatic {
             white: "Nigel Short",
             black: "Jan Timman",
+            white_elo: Some("2660"),
+            black_elo: Some("2630"),
             event: "The King March",
             year: 1991,
+            eco: Some("B04"),
+            opening: Some("Defensa Alekhine Moderna"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -207,11 +296,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 13. Garry Kasparov vs Veselin Topalov (1999) - Kasparov's Immortal
-        GameData {
+        MasterGameStatic {
             white: "Garry Kasparov",
             black: "Veselin Topalov",
+            white_elo: Some("2812"),
+            black_elo: Some("2700"),
             event: "Kasparov's Immortal",
             year: 1999,
+            eco: Some("B07"),
+            opening: Some("Defensa Pirc"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -227,11 +320,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 14. Stefan Levitsky vs Frank Marshall (1912) - The Gold Coins Game
-        GameData {
+        MasterGameStatic {
             white: "Stefan Levitsky",
             black: "Frank Marshall",
+            white_elo: None,
+            black_elo: Some("2650*"),
             event: "The Gold Coins Game",
             year: 1912,
+            eco: Some("C10"),
+            opening: Some("Defensa Francesa"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -243,11 +340,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 15. Wei Yi vs Lazaro Bruzon (2015) - Modern Immortal
-        GameData {
+        MasterGameStatic {
             white: "Wei Yi",
             black: "Lázaro Bruzón",
+            white_elo: Some("2724"),
+            black_elo: Some("2669"),
             event: "Modern Immortal",
             year: 2015,
+            eco: Some("B40"),
+            opening: Some("Defensa Siciliana"),
             result: "1-0",
             termination: "Jaque mate",
             moves: &[
@@ -262,11 +363,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 16. Rashid Nezhmetdinov vs Oleg Chernikov (1962) - Queen Sacrifice
-        GameData {
+        MasterGameStatic {
             white: "Rashid Nezhmetdinov",
             black: "Oleg Chernikov",
+            white_elo: Some("2600*"),
+            black_elo: Some("2500*"),
             event: "Nezhmetdinov's Queen Sac",
             year: 1962,
+            eco: Some("B33"),
+            opening: Some("Defensa Siciliana"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -280,11 +385,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 17. Mikhail Botvinnik vs José Raúl Capablanca (1938) - AVRO Deflection
-        GameData {
+        MasterGameStatic {
             white: "Mikhail Botvinnik",
             black: "José Raúl Capablanca",
+            white_elo: Some("2750*"),
+            black_elo: Some("2750*"),
             event: "AVRO Deflection",
             year: 1938,
+            eco: Some("E40"),
+            opening: Some("Defensa Nimzo-India"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -300,11 +409,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 18. Louis Paulsen vs Paul Morphy (1857) - Morphy's Queen Sac
-        GameData {
+        MasterGameStatic {
             white: "Louis Paulsen",
             black: "Paul Morphy",
+            white_elo: None,
+            black_elo: Some("2700*"),
             event: "Morphy's Queen Sac",
             year: 1857,
+            eco: Some("C47"),
+            opening: Some("Apertura Cuatro Caballos"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -317,11 +430,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 19. Robert Byrne vs Bobby Fischer (1963) - The Brilliance Prize
-        GameData {
+        MasterGameStatic {
             white: "Robert Byrne",
             black: "Bobby Fischer",
+            white_elo: Some("2550*"),
+            black_elo: Some("2650*"),
             event: "The Brilliance Prize",
             year: 1963,
+            eco: Some("E60"),
+            opening: Some("Defensa India de Rey"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -333,11 +450,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 20. Levon Aronian vs Viswanathan Anand (2013) - Anand's Immortal
-        GameData {
+        MasterGameStatic {
             white: "Levon Aronian",
             black: "Viswanathan Anand",
+            white_elo: Some("2802"),
+            black_elo: Some("2772"),
             event: "Anand's Immortal",
             year: 2013,
+            eco: Some("D47"),
+            opening: Some("Semieslava Merano"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -349,11 +470,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 21. Mikhail Botvinnik vs Mikhail Tal (1960) - Tal's Knight Sacrifice
-        GameData {
+        MasterGameStatic {
             white: "Mikhail Botvinnik",
             black: "Mikhail Tal",
+            white_elo: Some("2750*"),
+            black_elo: Some("2750*"),
             event: "Tal's Knight Sacrifice",
             year: 1960,
+            eco: Some("E69"),
+            opening: Some("Defensa India de Rey"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -372,11 +497,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 22. Veselin Topalov vs Alexei Shirov (1998) - Shirov's Bishop Sacrifice
-        GameData {
+        MasterGameStatic {
             white: "Veselin Topalov",
             black: "Alexei Shirov",
+            white_elo: Some("2740"),
+            black_elo: Some("2710"),
             event: "Shirov's Bishop Sac",
             year: 1998,
+            eco: Some("D85"),
+            opening: Some("Defensa Grünfeld"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -394,11 +523,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 23. Magnus Carlsen vs Sergey Karjakin (2016) - World Championship Tiebreak
-        GameData {
+        MasterGameStatic {
             white: "Magnus Carlsen",
             black: "Sergey Karjakin",
+            white_elo: Some("2853"),
+            black_elo: Some("2785"),
             event: "Carlsen's Queen Sac",
             year: 2016,
+            eco: Some("B54"),
+            opening: Some("Defensa Siciliana"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -415,11 +548,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 24. Daniil Dubov vs Sergey Karjakin (2020) - Dubov's Queen Sac
-        GameData {
+        MasterGameStatic {
             white: "Daniil Dubov",
             black: "Sergey Karjakin",
+            white_elo: Some("2702"),
+            black_elo: Some("2752"),
             event: "Dubov's Fireworks",
             year: 2020,
+            eco: Some("C53"),
+            opening: Some("Apertura Italiana"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -434,11 +571,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 25. Lev Polugaevsky vs Rashid Nezhmetdinov (1958) - Nezhmetdinov's Immortal
-        GameData {
+        MasterGameStatic {
             white: "Lev Polugaevsky",
             black: "Rashid Nezhmetdinov",
+            white_elo: Some("2650*"),
+            black_elo: Some("2600*"),
             event: "Nezhmetdinov's Immortal",
             year: 1958,
+            eco: Some("A53"),
+            opening: Some("Defensa Vieja India"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -452,11 +593,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 26. Tigran Petrosian vs Ludek Pachman (1961) - Petrosian's Queen Sac
-        GameData {
+        MasterGameStatic {
             white: "Tigran Petrosian",
             black: "Ludek Pachman",
+            white_elo: Some("2750*"),
+            black_elo: Some("2600*"),
             event: "Petrosian's Queen Sac",
             year: 1961,
+            eco: Some("A04"),
+            opening: Some("Ataque Indio de Rey"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -468,11 +613,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 27. Judit Polgar vs Ferenc Berkes (2003) - Polgar's Firestorm
-        GameData {
+        MasterGameStatic {
             white: "Judit Polgár",
             black: "Ferenc Berkes",
+            white_elo: Some("2715"),
+            black_elo: Some("2578"),
             event: "Polgar's Firestorm",
             year: 2003,
+            eco: Some("C13"),
+            opening: Some("Defensa Francesa Clásica"),
             result: "1-0",
             termination: "Abandono",
             moves: &[
@@ -484,11 +633,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 28. Richard Reti vs Alexander Alekhine (1925) - Alekhine's Masterpiece
-        GameData {
+        MasterGameStatic {
             white: "Richard Réti",
             black: "Alexander Alekhine",
+            white_elo: Some("2650*"),
+            black_elo: Some("2750*"),
             event: "Alekhine's Masterpiece",
             year: 1925,
+            eco: Some("A00"),
+            opening: Some("Apertura Reti"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -503,11 +656,15 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
         // 29. Anatoly Karpov vs Garry Kasparov (1985) - World Championship Game 16
-        GameData {
+        MasterGameStatic {
             white: "Anatoly Karpov",
             black: "Garry Kasparov",
+            white_elo: Some("2720"),
+            black_elo: Some("2700"),
             event: "The Octopus Knight",
             year: 1985,
+            eco: Some("B44"),
+            opening: Some("Defensa Siciliana Taimanov"),
             result: "0-1",
             termination: "Abandono",
             moves: &[
@@ -521,7 +678,9 @@ pub fn get_master_games() -> Vec<GameData> {
                 "Rfd2", "Qe3", "Rxd3", "Rc1", "Nb2", "Qf2", "Nd2", "Rxd1+", "Nxd1", "Re1+"
             ],
         },
-    ]
+    ];
+
+    static_games.iter().map(|g| g.to_game_data()).collect()
 }
 
 #[cfg(test)]
@@ -534,7 +693,7 @@ mod tests {
     fn test_all_games_legal_moves() {
         for (i, g) in get_master_games().iter().enumerate() {
             let mut pos = Chess::default();
-            for (m_idx, &m_str) in g.moves.iter().enumerate() {
+            for (m_idx, m_str) in g.moves.iter().enumerate() {
                 let san: San = m_str.parse().expect(&format!("Game {} move {} failed to parse: {}", i, m_idx, m_str));
                 let m = san.to_move(&pos).expect(&format!("Game {} ('{}') move {} ('{}') is illegal!", i, g.event, m_idx + 1, m_str));
                 pos.play_unchecked(m);

@@ -94,13 +94,132 @@ fn measure_text(font: &fontdue::Font, text: &str, font_size: f32) -> f32 {
     width
 }
 
+fn draw_eval_bar(
+    canvas: &mut PixmapMut,
+    assets: &AssetManager,
+    sim: &ChessSimulator,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    let r = 6.0;
+
+    // Sombra sutil de la barra de evaluación
+    let mut shadow_paint = Paint::default();
+    shadow_paint.set_color(SkColor::from_rgba8(0, 0, 0, 70));
+    let mut pb_shadow = PathBuilder::new();
+    add_rounded_rect(&mut pb_shadow, x - 1.0, y + 2.0, w + 2.0, h + 3.0, r + 1.0);
+    if let Some(path) = pb_shadow.finish() {
+        canvas.fill_path(&path, &shadow_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    }
+
+    // Fondo: Zona de Negras (Antracita oscuro Chess.com #262421)
+    let mut black_paint = Paint::default();
+    black_paint.set_color(SkColor::from_rgba8(38, 36, 33, 255));
+    let mut pb_bg = PathBuilder::new();
+    add_rounded_rect(&mut pb_bg, x, y, w, h, r);
+    if let Some(path) = pb_bg.finish() {
+        canvas.fill_path(&path, &black_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    }
+
+    // Zona de Blancas: Llena desde abajo hacia arriba
+    let white_pct = sim.current_eval_pct.clamp(0.0, 1.0);
+    let white_h = (h * white_pct).round();
+    let white_y = y + h - white_h;
+
+    if white_h > 0.0 {
+        let mut white_paint = Paint::default();
+        white_paint.set_color(SkColor::from_rgba8(245, 245, 248, 255));
+
+        let mut pb_white = PathBuilder::new();
+        if white_pct >= 0.98 {
+            add_rounded_rect(&mut pb_white, x, y, w, h, r);
+        } else if white_pct > 0.01 {
+            let wr = r.min(white_h).min(w / 2.0);
+            pb_white.move_to(x, white_y);
+            pb_white.line_to(x + w, white_y);
+            pb_white.line_to(x + w, y + h - wr);
+            pb_white.quad_to(x + w, y + h, x + w - wr, y + h);
+            pb_white.line_to(x + wr, y + h);
+            pb_white.quad_to(x, y + h, x, y + h - wr);
+            pb_white.line_to(x, white_y);
+            pb_white.close();
+        }
+        if let Some(path) = pb_white.finish() {
+            canvas.fill_path(&path, &white_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        }
+    }
+
+    // Línea central (50% - igualdad absoluta)
+    let mid_y = (y + h * 0.5).round();
+    let mut mid_paint = Paint::default();
+    mid_paint.set_color(SkColor::from_rgba8(110, 120, 140, 150));
+    let mut pb_mid = PathBuilder::new();
+    pb_mid.move_to(x + 2.0, mid_y);
+    pb_mid.line_to(x + w - 2.0, mid_y);
+    let mut mid_stroke = tiny_skia::Stroke::default();
+    mid_stroke.width = 1.0;
+    if let Some(path) = pb_mid.finish() {
+        canvas.stroke_path(&path, &mid_paint, &mid_stroke, Transform::identity(), None);
+    }
+
+    // Borde exterior
+    let mut border_paint = Paint::default();
+    border_paint.set_color(SkColor::from_rgba8(65, 75, 105, 170));
+    let mut stroke = tiny_skia::Stroke::default();
+    stroke.width = 1.2;
+    let mut pb_border = PathBuilder::new();
+    add_rounded_rect(&mut pb_border, x, y, w, h, r);
+    if let Some(path) = pb_border.finish() {
+        canvas.stroke_path(&path, &border_paint, &stroke, Transform::identity(), None);
+    }
+
+    // Puntuación numérica en la barra (e.g. +1.4 o M1)
+    let score = sim.current_eval_score;
+    let font_size = 9.5;
+    if sim.pos.is_checkmate() {
+        let (mate_str, is_white_win) = if score > 0.0 { ("M1", true) } else { ("-M1", false) };
+        let tw = measure_text(&assets.ui_font, mate_str, font_size);
+        let tx = x + (w - tw) / 2.0;
+        if is_white_win {
+            draw_text(canvas, &assets.ui_font, mate_str, tx, y + h - 6.0, font_size, SkColor::from_rgba8(20, 22, 28, 255));
+        } else {
+            draw_text(canvas, &assets.ui_font, mate_str, tx, y + 14.0, font_size, SkColor::from_rgba8(240, 240, 245, 255));
+        }
+    } else {
+        let abs_score = score.abs();
+        let score_str = if abs_score < 0.1 {
+            "0.0".to_string()
+        } else {
+            format!("{:.1}", abs_score)
+        };
+        let tw = measure_text(&assets.ui_font, &score_str, font_size);
+        let tx = x + (w - tw) / 2.0;
+
+        if score >= 0.0 {
+            // Ventaja blanca: abajo dentro de la barra blanca
+            let ty = (y + h - 6.0).min(white_y + white_h - 4.0).max(y + 14.0);
+            draw_text(canvas, &assets.ui_font, &score_str, tx, ty, font_size, SkColor::from_rgba8(25, 27, 34, 255));
+        } else {
+            // Ventaja negra: arriba dentro de la barra negra
+            let ty = y + 14.0;
+            draw_text(canvas, &assets.ui_font, &score_str, tx, ty, font_size, SkColor::from_rgba8(230, 235, 245, 255));
+        }
+    }
+}
+
 fn draw_player_badge(
     canvas: &mut PixmapMut,
     assets: &AssetManager,
     sim: &ChessSimulator,
     color: Color,
     player_name: &str,
-    meta_text: &str,
+    elo: Option<&str>,
+    top_meta: &str,
+    sub_meta: Option<&str>,
+    captured: &crate::chess_sim::CapturedPieces,
+    material_advantage: i32,
     x: f32,
     y: f32,
     w: f32,
@@ -148,7 +267,7 @@ fn draw_player_badge(
 
     // 4. Mini icono / Avatar de la pieza (Rey)
     let avatar_pix = assets.get_piece(sim.piece_style, color, Role::King);
-    let avatar_dim = (h * 0.68).round().clamp(22.0, 30.0);
+    let avatar_dim = (h * 0.68).round().clamp(24.0, 32.0);
     let scale = avatar_dim / (avatar_pix.width() as f32);
     let mut avatar_paint = PixmapPaint::default();
     avatar_paint.quality = FilterQuality::Bicubic;
@@ -157,23 +276,96 @@ fn draw_player_badge(
     let xform = Transform::from_scale(scale, scale).post_translate(ax, ay);
     canvas.draw_pixmap(0, 0, avatar_pix.as_ref(), &avatar_paint, xform, None);
 
-    // 5. Nombre del jugador
-    let name_font_size = (h * 0.38).round().clamp(13.0, 16.0);
+    // 5. Nombre del jugador y Elo
+    let name_font_size = (h * 0.33).round().clamp(13.0, 16.0);
     let name_x = ax + avatar_dim + 10.0;
-    let baseline_y = y + h * 0.64;
+    let baseline_name_y = y + h * 0.44;
     let name_color = if is_active_turn {
         SkColor::from_rgba8(250, 252, 255, 255)
     } else {
         SkColor::from_rgba8(220, 226, 238, 255)
     };
-    draw_text(canvas, &assets.ui_font, player_name, name_x, baseline_y, name_font_size, name_color);
+    let cur_name_end = draw_text(canvas, &assets.ui_font, player_name, name_x, baseline_name_y, name_font_size, name_color);
 
-    // 6. Metadatos a la derecha (Evento / Jugada)
-    let meta_font_size = (h * 0.30).round().clamp(11.0, 13.0);
-    let meta_w = measure_text(&assets.ui_font, meta_text, meta_font_size);
-    let meta_x = (x + w - meta_w - 14.0).max(name_x + 120.0);
-    let meta_color = SkColor::from_rgba8(138, 152, 178, 255);
-    draw_text(canvas, &assets.ui_font, meta_text, meta_x, baseline_y, meta_font_size, meta_color);
+    if let Some(elo_str) = elo {
+        let elo_text = format!(" ({})", elo_str);
+        let elo_color = SkColor::from_rgba8(145, 158, 185, 255);
+        draw_text(canvas, &assets.ui_font, &elo_text, cur_name_end, baseline_name_y, name_font_size - 1.5, elo_color);
+    }
+
+    // 6. Sub-fila izquierda: Piezas capturadas (en orden de valor: Q, R, B, N, P) y ventaja material (+N)
+    let enemy_color = !color;
+    let mini_icon_dim = (h * 0.32).round().clamp(13.0, 16.0);
+    let mini_spacing = (mini_icon_dim * 0.62).round();
+    let mini_y = y + h * 0.56;
+    let mut cur_icon_x = name_x;
+
+    let roles_in_order = [
+        (Role::Queen, captured.queens),
+        (Role::Rook, captured.rooks),
+        (Role::Bishop, captured.bishops),
+        (Role::Knight, captured.knights),
+        (Role::Pawn, captured.pawns),
+    ];
+
+    for (role, count) in roles_in_order {
+        if count == 0 {
+            continue;
+        }
+        let piece_pix = assets.get_piece(sim.piece_style, enemy_color, role);
+        let p_scale = mini_icon_dim / (piece_pix.width() as f32);
+        let mut p_paint = PixmapPaint::default();
+        p_paint.quality = FilterQuality::Bicubic;
+
+        for _ in 0..count {
+            let pxform = Transform::from_scale(p_scale, p_scale).post_translate(cur_icon_x, mini_y);
+            canvas.draw_pixmap(0, 0, piece_pix.as_ref(), &p_paint, pxform, None);
+            cur_icon_x += mini_spacing;
+        }
+        cur_icon_x += 2.0;
+    }
+
+    // Ventaja material pill badge (+N)
+    if material_advantage > 0 {
+        let pill_text = format!("+{}", material_advantage);
+        let pill_font_size = 10.5;
+        let pill_tw = measure_text(&assets.ui_font, &pill_text, pill_font_size);
+        let pill_pad = 5.0;
+        let pill_w = pill_tw + pill_pad * 2.0;
+        let pill_h = mini_icon_dim * 0.88;
+        let pill_x = cur_icon_x + 4.0;
+        let pill_y = mini_y + (mini_icon_dim - pill_h) / 2.0;
+
+        let mut pill_bg = Paint::default();
+        pill_bg.set_color(SkColor::from_rgba8(255, 255, 255, 28));
+        let mut pb_pill = PathBuilder::new();
+        add_rounded_rect(&mut pb_pill, pill_x, pill_y, pill_w, pill_h, 4.0);
+        if let Some(path) = pb_pill.finish() {
+            canvas.fill_path(&path, &pill_bg, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        }
+
+        let pill_color = SkColor::from_rgba8(240, 242, 248, 255);
+        let pill_base_y = pill_y + pill_h * 0.78;
+        draw_text(canvas, &assets.ui_font, &pill_text, pill_x + pill_pad, pill_base_y, pill_font_size, pill_color);
+    }
+
+    // 7. Metadatos a la derecha (Fila 1: Apertura/Jugada, Fila 2: Evento/SAN)
+    let meta_font_size = (h * 0.28).round().clamp(11.0, 13.0);
+    let top_w = measure_text(&assets.ui_font, top_meta, meta_font_size);
+    let right_pad = 14.0;
+    let top_x = x + w - top_w - right_pad;
+    let top_baseline = y + h * 0.44;
+    let top_color = SkColor::from_rgba8(195, 205, 225, 255);
+    draw_text(canvas, &assets.ui_font, top_meta, top_x, top_baseline, meta_font_size, top_color);
+
+    if let Some(sub_text) = sub_meta {
+        let sub_font_size = meta_font_size - 1.0;
+        let sub_w = measure_text(&assets.ui_font, sub_text, sub_font_size);
+        let sub_x = x + w - sub_w - right_pad;
+        let sub_baseline = y + h * 0.80;
+        let sub_color = SkColor::from_rgba8(130, 142, 168, 255);
+        draw_text(canvas, &assets.ui_font, sub_text, sub_x, sub_baseline, sub_font_size, sub_color);
+    }
 }
 
 pub fn render_frame(
@@ -190,21 +382,27 @@ pub fn render_frame(
     // 1. Rellenar toda la pantalla con el color de fondo
     canvas.fill(bg_color);
 
-    // 2. Calcular tamaño fijo del tablero
-    let max_avail = (width * 0.90).min(height * 0.76); // Reserva vertical para badges
+    // 2. Calcular tamaño fijo del tablero y de la barra de evaluación
+    let max_avail = (width * 0.90).min(height * 0.74); // Reserva vertical para badges
     let target_board_dim = desired_board_size.min(max_avail);
     let tile_size = (target_board_dim / 8.0).floor().max(16.0);
     let board_total_w = tile_size * 8.0;
     let board_total_h = tile_size * 8.0;
 
-    let board_x = ((width - board_total_w) / 2.0).floor();
+    let eval_bar_w = (tile_size * 0.28).clamp(15.0, 22.0);
+    let eval_bar_gap = 10.0;
+    let total_content_w = eval_bar_w + eval_bar_gap + board_total_w;
+
+    let content_x = ((width - total_content_w) / 2.0).floor();
+    let eval_bar_x = content_x;
+    let board_x = content_x + eval_bar_w + eval_bar_gap;
     let board_y = ((height - board_total_h) / 2.0).floor();
 
     // 3. Marco flotante del tablero con bordes redondeados y sombra suave
-    let frame_pad = (tile_size * 0.28).floor().max(20.0);
-    let frame_x = board_x - frame_pad;
+    let frame_pad = (tile_size * 0.26).floor().max(18.0);
+    let frame_x = content_x - frame_pad;
     let frame_y = board_y - frame_pad;
-    let frame_w = board_total_w + frame_pad * 2.0;
+    let frame_w = total_content_w + frame_pad * 2.0;
     let frame_h = board_total_h + frame_pad * 2.0;
     let corner_radius = 20.0;
 
@@ -236,6 +434,17 @@ pub fn render_frame(
     if let Some(path) = pb_border.finish() {
         canvas.stroke_path(&path, &border_paint, &stroke, Transform::identity(), None);
     }
+
+    // 3.1. Dibujar la Barra de Evaluación dinámica animada
+    draw_eval_bar(
+        canvas,
+        assets,
+        sim,
+        eval_bar_x,
+        board_y,
+        eval_bar_w,
+        board_total_h,
+    );
 
     // 4. Dibujar el tablero oficial de Chess.com escalado con filtrado Bicúbico
     let board_pixmap = assets.get_board(sim.board_style);
@@ -435,8 +644,8 @@ pub fn render_frame(
         }
     }
 
-    // 10. Badges de jugadores estilo retransmisión (Opción A)
-    let badge_h = (tile_size * 0.52).floor().clamp(38.0, 44.0);
+    // 10. Badges de jugadores estilo retransmisión
+    let badge_h = (tile_size * 0.58).floor().clamp(44.0, 50.0);
     let badge_pad = 12.0;
     let badge_w = frame_w;
     let badge_x = frame_x;
@@ -445,7 +654,7 @@ pub fn render_frame(
     let bot_badge_y = frame_y + frame_h + badge_pad;
 
     // Solo dibujar si la ventana tiene altura suficiente
-    if top_badge_y >= 6.0 && bot_badge_y + badge_h <= height - 6.0 {
+    if top_badge_y >= 4.0 && bot_badge_y + badge_h <= height - 4.0 {
         let game = sim.current_game();
         let current_turn = sim.pos.turn();
 
@@ -454,15 +663,34 @@ pub fn render_frame(
             _ => (current_turn == Color::Black, current_turn == Color::White),
         };
 
+        let (white_cap, black_cap, diff) = sim.captured_pieces();
+        let white_advantage = diff.max(0);
+        let black_advantage = (-diff).max(0);
+
         // Badge superior: Jugador de Negras
-        let top_meta = format!("{} ({})", game.event, game.year);
+        let top_meta = match (&game.eco, &game.opening) {
+            (Some(eco), Some(op)) => format!("{} · {}", eco, op),
+            (Some(eco), None) => format!("ECO {}", eco),
+            (None, Some(op)) => op.clone(),
+            (None, None) => format!("{} ({})", game.event, game.year),
+        };
+        let top_sub_meta = if game.eco.is_some() || game.opening.is_some() {
+            Some(format!("{} ({})", game.event, game.year))
+        } else {
+            None
+        };
+
         draw_player_badge(
             canvas,
             assets,
             sim,
             Color::Black,
-            game.black,
+            &game.black,
+            game.black_elo.as_deref(),
             &top_meta,
+            top_sub_meta.as_deref(),
+            &black_cap,
+            black_advantage,
             badge_x,
             top_badge_y,
             badge_w,
@@ -476,13 +704,23 @@ pub fn render_frame(
         } else {
             format!("Jugada {}/{}", sim.current_move_num(), sim.total_moves())
         };
+        let bot_sub_meta = if let Some(last_san) = sim.current_move_san() {
+            Some(format!("Última: {}", last_san))
+        } else {
+            Some("Comienzo de partida".to_string())
+        };
+
         draw_player_badge(
             canvas,
             assets,
             sim,
             Color::White,
-            game.white,
+            &game.white,
+            game.white_elo.as_deref(),
             &bot_meta,
+            bot_sub_meta.as_deref(),
+            &white_cap,
+            white_advantage,
             badge_x,
             bot_badge_y,
             badge_w,

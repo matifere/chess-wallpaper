@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 use rand::seq::SliceRandom;
 use shakmaty::san::San;
-use shakmaty::{Chess, Move, Piece, Position, Role};
+use shakmaty::{Chess, Color, Move, Piece, Position, Role, Square};
 use crate::assets::{BoardStyle, PieceStyle};
 use crate::games::{get_master_games, GameData};
 
@@ -221,6 +221,141 @@ impl MoveAnim {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CapturedPieces {
+    pub queens: u8,
+    pub rooks: u8,
+    pub bishops: u8,
+    pub knights: u8,
+    pub pawns: u8,
+}
+
+impl CapturedPieces {
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.queens == 0 && self.rooks == 0 && self.bishops == 0 && self.knights == 0 && self.pawns == 0
+    }
+}
+
+// Tablas de valores posicionales PeSTO (perspectiva de blancas, 64 casillas de a1 a h8)
+const PAWN_TABLE: [i32; 64] = [
+     0,  0,  0,  0,  0,  0,  0,  0,
+     5, 10, 10,-20,-20, 10, 10,  5,
+     5, -5,-10,  0,  0,-10, -5,  5,
+     0,  0,  0, 20, 20,  0,  0,  0,
+     5,  5, 10, 25, 25, 10,  5,  5,
+    10, 10, 20, 30, 30, 20, 10, 10,
+    50, 50, 50, 50, 50, 50, 50, 50,
+     0,  0,  0,  0,  0,  0,  0,  0,
+];
+
+const KNIGHT_TABLE: [i32; 64] = [
+   -50,-40,-30,-30,-30,-30,-40,-50,
+   -40,-20,  0,  5,  5,  0,-20,-40,
+   -30,  5, 10, 15, 15, 10,  5,-30,
+   -30,  0, 15, 20, 20, 15,  0,-30,
+   -30,  5, 15, 20, 20, 15,  5,-30,
+   -30,  0, 10, 15, 15, 10,  0,-30,
+   -40,-20,  0,  0,  0,  0,-20,-40,
+   -50,-40,-30,-30,-30,-30,-40,-50,
+];
+
+const BISHOP_TABLE: [i32; 64] = [
+   -20,-10,-10,-10,-10,-10,-10,-20,
+   -10,  5,  0,  0,  0,  0,  5,-10,
+   -10, 10, 10, 10, 10, 10, 10,-10,
+   -10,  0, 10, 10, 10, 10,  0,-10,
+   -10,  5,  5, 10, 10,  5,  5,-10,
+   -10,  0,  5, 10, 10,  5,  0,-10,
+   -10,  0,  0,  0,  0,  0,  0,-10,
+   -20,-10,-10,-10,-10,-10,-10,-20,
+];
+
+const ROOK_TABLE: [i32; 64] = [
+     0,  0,  0,  5,  5,  0,  0,  0,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+     5, 10, 10, 10, 10, 10, 10,  5,
+     0,  0,  0,  0,  0,  0,  0,  0,
+];
+
+const QUEEN_TABLE: [i32; 64] = [
+   -20,-10,-10, -5, -5,-10,-10,-20,
+   -10,  0,  5,  0,  0,  0,  0,-10,
+   -10,  5,  5,  5,  5,  5,  0,-10,
+     0,  0,  5,  5,  5,  5,  0, -5,
+    -5,  0,  5,  5,  5,  5,  0, -5,
+   -10,  0,  5,  5,  5,  5,  0,-10,
+   -10,  0,  0,  0,  0,  0,  0,-10,
+   -20,-10,-10, -5, -5,-10,-10,-20,
+];
+
+const KING_TABLE: [i32; 64] = [
+    20, 30, 10,  0,  0, 10, 30, 20,
+    20, 20,  0,  0,  0,  0, 20, 20,
+   -10,-20,-20,-20,-20,-20,-20,-10,
+   -20,-30,-30,-40,-40,-30,-30,-20,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+];
+
+pub fn evaluate_position(pos: &Chess) -> f32 {
+    if pos.is_checkmate() {
+        return match pos.turn() {
+            Color::White => -100.0,
+            Color::Black => 100.0,
+        };
+    }
+    if pos.is_stalemate() || pos.is_insufficient_material() {
+        return 0.0;
+    }
+
+    let board = pos.board();
+    let mut white_score = 0i32;
+    let mut black_score = 0i32;
+
+    for sq in Square::ALL {
+        if let Some(piece) = board.piece_at(sq) {
+            let f = sq.file() as usize;
+            let r = sq.rank() as usize;
+            let w_idx = r * 8 + f;
+            let b_idx = (7 - r) * 8 + f;
+
+            let (mat_val, pst_val) = match piece.role {
+                Role::Pawn => (100, if piece.color == Color::White { PAWN_TABLE[w_idx] } else { PAWN_TABLE[b_idx] }),
+                Role::Knight => (320, if piece.color == Color::White { KNIGHT_TABLE[w_idx] } else { KNIGHT_TABLE[b_idx] }),
+                Role::Bishop => (330, if piece.color == Color::White { BISHOP_TABLE[w_idx] } else { BISHOP_TABLE[b_idx] }),
+                Role::Rook => (500, if piece.color == Color::White { ROOK_TABLE[w_idx] } else { ROOK_TABLE[b_idx] }),
+                Role::Queen => (900, if piece.color == Color::White { QUEEN_TABLE[w_idx] } else { QUEEN_TABLE[b_idx] }),
+                Role::King => (20000, if piece.color == Color::White { KING_TABLE[w_idx] } else { KING_TABLE[b_idx] }),
+            };
+
+            if piece.color == Color::White {
+                white_score += mat_val + pst_val;
+            } else {
+                black_score += mat_val + pst_val;
+            }
+        }
+    }
+
+    (white_score - black_score) as f32 / 100.0
+}
+
+pub fn eval_to_white_pct(score: f32) -> f32 {
+    if score >= 90.0 {
+        1.0
+    } else if score <= -90.0 {
+        0.0
+    } else {
+        1.0 / (1.0 + 10.0_f32.powf(-score / 4.2))
+    }
+}
+
 pub enum SimState {
     Idle { next_move_at: Instant },
     Animating(MoveAnim),
@@ -237,11 +372,14 @@ pub struct ChessSimulator {
     pub move_duration: Duration,
     pub pause_between_moves: Duration,
     pub pause_after_game: Duration,
+    pub current_eval_pct: f32,
+    pub target_eval_pct: f32,
+    pub current_eval_score: f32,
 
-    games: Vec<GameData>,
-    playlist: Vec<usize>,
-    playlist_cursor: usize,
-    current_move_index: usize,
+    pub games: Vec<GameData>,
+    pub playlist: Vec<usize>,
+    pub playlist_cursor: usize,
+    pub current_move_index: usize,
 }
 
 impl ChessSimulator {
@@ -251,14 +389,19 @@ impl ChessSimulator {
         board_style: BoardStyle,
         piece_style: PieceStyle,
         rotate_theme: bool,
+        games_input: Vec<GameData>,
     ) -> Self {
-        let games = get_master_games();
+        let games = if games_input.is_empty() {
+            get_master_games()
+        } else {
+            games_input
+        };
         let mut playlist: Vec<usize> = (0..games.len()).collect();
         let mut rng = rand::rng();
         playlist.shuffle(&mut rng);
 
         let first_game = &games[playlist[0]];
-        println!("Cargadas {} partidas maestras históricas.", games.len());
+        println!("Cargadas {} partidas en rotación.", games.len());
         println!("Tablero: {:?} | Piezas: {:?}", board_style, piece_style);
         println!(
             "Partida inicial [1/{}]: '{} vs {}' - {} ({})",
@@ -269,8 +412,12 @@ impl ChessSimulator {
             first_game.year
         );
 
+        let initial_pos = Chess::default();
+        let initial_score = evaluate_position(&initial_pos);
+        let initial_pct = eval_to_white_pct(initial_score);
+
         Self {
-            pos: Chess::default(),
+            pos: initial_pos,
             state: SimState::Idle {
                 next_move_at: Instant::now() + Duration::from_millis(400),
             },
@@ -281,6 +428,9 @@ impl ChessSimulator {
             move_duration: Duration::from_millis(move_ms),
             pause_between_moves: Duration::from_millis(delay_ms),
             pause_after_game: Duration::from_millis(3600),
+            current_eval_pct: initial_pct,
+            target_eval_pct: initial_pct,
+            current_eval_score: initial_score,
             games,
             playlist,
             playlist_cursor: 0,
@@ -289,6 +439,13 @@ impl ChessSimulator {
     }
 
     pub fn update(&mut self, now: Instant) -> bool {
+        let eval_diff = self.target_eval_pct - self.current_eval_pct;
+        if eval_diff.abs() > 0.001 {
+            self.current_eval_pct += eval_diff * 0.12;
+        } else {
+            self.current_eval_pct = self.target_eval_pct;
+        }
+
         match self.state {
             SimState::Animating(ref anim) => {
                 if anim.progress(now) >= 1.0 {
@@ -345,7 +502,7 @@ impl ChessSimulator {
             return;
         }
 
-        let san_str = current_game.moves[self.current_move_index];
+        let san_str = &current_game.moves[self.current_move_index];
         let chosen_move = match san_str.parse::<San>().ok().and_then(|s| s.to_move(&self.pos).ok()) {
             Some(m) => {
                 self.current_move_index += 1;
@@ -492,6 +649,11 @@ impl ChessSimulator {
         self.last_move = Some((from_sq, to_sq));
 
         self.pos.play_unchecked(chosen_move);
+
+        let score = evaluate_position(&self.pos);
+        self.current_eval_score = score;
+        self.target_eval_pct = eval_to_white_pct(score);
+
         self.state = SimState::Animating(anim);
     }
 
@@ -499,6 +661,11 @@ impl ChessSimulator {
         self.pos = Chess::default();
         self.current_move_index = 0;
         self.last_move = None;
+
+        let initial_score = evaluate_position(&self.pos);
+        self.current_eval_score = initial_score;
+        self.target_eval_pct = eval_to_white_pct(initial_score);
+        self.current_eval_pct = self.target_eval_pct;
 
         self.playlist_cursor += 1;
         if self.playlist_cursor >= self.playlist.len() {
@@ -547,6 +714,82 @@ impl ChessSimulator {
     pub fn total_moves(&self) -> usize {
         (self.current_game().moves.len() + 1) / 2
     }
+
+    pub fn current_move_san(&self) -> Option<String> {
+        if self.current_move_index == 0 {
+            return None;
+        }
+        let current_game_idx = self.playlist[self.playlist_cursor];
+        let current_game = &self.games[current_game_idx];
+        let idx = self.current_move_index - 1;
+        if idx < current_game.moves.len() {
+            let san = &current_game.moves[idx];
+            let move_num = (idx / 2) + 1;
+            if idx % 2 == 0 {
+                Some(format!("{}. {}", move_num, san))
+            } else {
+                Some(format!("{}... {}", move_num, san))
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn captured_pieces(&self) -> (CapturedPieces, CapturedPieces, i32) {
+        let mut white_p = 0u8;
+        let mut white_n = 0u8;
+        let mut white_b = 0u8;
+        let mut white_r = 0u8;
+        let mut white_q = 0u8;
+
+        let mut black_p = 0u8;
+        let mut black_n = 0u8;
+        let mut black_b = 0u8;
+        let mut black_r = 0u8;
+        let mut black_q = 0u8;
+
+        for sq in Square::ALL {
+            if let Some(piece) = self.pos.board().piece_at(sq) {
+                match (piece.color, piece.role) {
+                    (Color::White, Role::Pawn) => white_p += 1,
+                    (Color::White, Role::Knight) => white_n += 1,
+                    (Color::White, Role::Bishop) => white_b += 1,
+                    (Color::White, Role::Rook) => white_r += 1,
+                    (Color::White, Role::Queen) => white_q += 1,
+                    (Color::Black, Role::Pawn) => black_p += 1,
+                    (Color::Black, Role::Knight) => black_n += 1,
+                    (Color::Black, Role::Bishop) => black_b += 1,
+                    (Color::Black, Role::Rook) => black_r += 1,
+                    (Color::Black, Role::Queen) => black_q += 1,
+                    _ => {}
+                }
+            }
+        }
+
+        // Piezas capturadas por las Blancas = Piezas Negras ausentes del tablero
+        let white_captured = CapturedPieces {
+            queens: 1u8.saturating_sub(black_q),
+            rooks: 2u8.saturating_sub(black_r),
+            bishops: 2u8.saturating_sub(black_b),
+            knights: 2u8.saturating_sub(black_n),
+            pawns: 8u8.saturating_sub(black_p),
+        };
+
+        // Piezas capturadas por las Negras = Piezas Blancas ausentes del tablero
+        let black_captured = CapturedPieces {
+            queens: 1u8.saturating_sub(white_q),
+            rooks: 2u8.saturating_sub(white_r),
+            bishops: 2u8.saturating_sub(white_b),
+            knights: 2u8.saturating_sub(white_n),
+            pawns: 8u8.saturating_sub(white_p),
+        };
+
+        let white_mat = (white_p as i32) + (white_n as i32 * 3) + (white_b as i32 * 3) + (white_r as i32 * 5) + (white_q as i32 * 9);
+        let black_mat = (black_p as i32) + (black_n as i32 * 3) + (black_b as i32 * 3) + (black_r as i32 * 5) + (black_q as i32 * 9);
+
+        let diff = white_mat - black_mat;
+        (white_captured, black_captured, diff)
+    }
 }
 
 #[cfg(test)]
@@ -555,7 +798,7 @@ mod tests {
 
     #[test]
     fn test_castling_animation() {
-        let mut sim = ChessSimulator::new(260, 500, BoardStyle::Tournament, PieceStyle::Neo, false);
+        let mut sim = ChessSimulator::new(260, 500, BoardStyle::Tournament, PieceStyle::Neo, false, vec![]);
         // Forzar a la Opera Game (índice donde esté en la playlist)
         let opera_idx = sim.games.iter().position(|g| g.event.contains("Opera Game")).unwrap();
         sim.playlist_cursor = sim.playlist.iter().position(|&idx| idx == opera_idx).unwrap();
@@ -590,7 +833,7 @@ mod tests {
         use tiny_skia::{Color as SkColor, Pixmap};
 
         let assets = AssetManager::load_embedded();
-        let mut sim = ChessSimulator::new(260, 500, BoardStyle::Tournament, PieceStyle::Neo, false);
+        let mut sim = ChessSimulator::new(260, 500, BoardStyle::Tournament, PieceStyle::Neo, false, vec![]);
         let opera_idx = sim.games.iter().position(|g| g.event.contains("Opera Game")).unwrap();
         sim.playlist_cursor = sim.playlist.iter().position(|&idx| idx == opera_idx).unwrap();
 
@@ -655,5 +898,45 @@ mod tests {
             }
         }
         assert!(check_found, "Debe encontrarse una jugada con jaque en Opera Game");
+    }
+
+    #[test]
+    fn test_captured_pieces_and_material_balance() {
+        let mut sim = ChessSimulator::new(260, 500, BoardStyle::Tournament, PieceStyle::Neo, false, vec![]);
+        let (white_cap, black_cap, diff) = sim.captured_pieces();
+        assert!(white_cap.is_empty());
+        assert!(black_cap.is_empty());
+        assert_eq!(diff, 0);
+
+        // Avanzar la partida Opera Game hasta una captura
+        let opera_idx = sim.games.iter().position(|g| g.event.contains("Opera Game")).unwrap();
+        sim.playlist_cursor = sim.playlist.iter().position(|&idx| idx == opera_idx).unwrap();
+
+        // 1. e4 e5 2. Nf3 d6 3. d4 Bg4 4. dxe5 (captura!)
+        for _ in 0..7 {
+            sim.perform_next_move(Instant::now());
+        }
+
+        let (white_cap_after, black_cap_after, diff_after) = sim.captured_pieces();
+        // White ha capturado 1 peón negro
+        assert_eq!(white_cap_after.pawns, 1);
+        assert_eq!(black_cap_after.pawns, 0);
+        assert_eq!(diff_after, 1); // +1 de ventaja material para Blancas
+
+        assert_eq!(sim.current_move_san().as_deref(), Some("4. dxe5"));
+    }
+
+    #[test]
+    fn test_evaluation_and_pct() {
+        let pos = Chess::default();
+        let eval = evaluate_position(&pos);
+        assert!(eval.abs() < 0.5, "Posición inicial debe ser cercana a 0.0: got {}", eval);
+        let pct = eval_to_white_pct(eval);
+        assert!((pct - 0.5).abs() < 0.05, "Porcentaje inicial debe estar cerca del 50%: got {}", pct);
+
+        assert_eq!(eval_to_white_pct(100.0), 1.0);
+        assert_eq!(eval_to_white_pct(-100.0), 0.0);
+        assert!(eval_to_white_pct(3.0) > 0.75);
+        assert!(eval_to_white_pct(-3.0) < 0.25);
     }
 }

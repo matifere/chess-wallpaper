@@ -1,6 +1,7 @@
 mod assets;
 mod chess_sim;
 mod games;
+mod pgn;
 mod renderer;
 
 use std::num::NonZeroU32;
@@ -317,6 +318,58 @@ fn parse_hex_color(s: &str) -> Option<Color> {
 fn main() {
     let mut args = pico_args::Arguments::from_env();
 
+    if args.contains(["-h", "--help"]) {
+        println!("Chess Wallpaper - Fondo de escritorio animado de ajedrez (Wayland)");
+        println!();
+        println!("USO:");
+        println!("    chess-wallpaper [OPCIONES]");
+        println!();
+        println!("OPCIONES:");
+        println!("    -w, --window             Ejecutar en ventana de prueba interactiva");
+        println!("    -t, --theme <TEMA>       Tema visual (tournament, wood, blue, neon, icy, classic, etc.)");
+        println!("        --board <TABLERO>    Estilo específico de tablero (tournament, walnut, blue, neon, etc.)");
+        println!("        --pieces <PIEZAS>    Estilo específico de piezas (neo, wood, glass, 8bit, etc.)");
+        println!("        --rotate             Rotar tema tablero/piezas aleatoriamente entre partidas");
+        println!("    -b, --board-size <PX>    Tamaño del tablero en píxeles (default: 640)");
+        println!("        --bg <HEX>           Color de fondo en hexadecimal (ej. #141622)");
+        println!("    -s, --speed <MS>         Duración de animación de cada jugada en ms (default: 260)");
+        println!("    -d, --delay <MS>         Pausa entre jugadas en ms (default: 500)");
+        println!("    -f, --fast               Modo rápido (speed: 200ms, delay: 320ms)");
+        println!("        --pgn <ARCHIVO>      Cargar archivo PGN con partidas del usuario");
+        println!("        --pgn-dir <DIR>      Cargar directorio de archivos .pgn");
+        println!("        --only-custom        Reproducir exclusivamente partidas personalizadas del usuario");
+        println!("        --snapshot <PATH>    Generar captura PNG y salir");
+        println!("    -h, --help               Mostrar esta ayuda");
+        println!();
+        println!("DIRECTORIO PGN POR DEFECTO:");
+        println!("    ~/.config/chess-wallpaper/games/*.pgn");
+        return;
+    }
+
+    let pgn_file: Option<String> = args.opt_value_from_str("--pgn").unwrap_or(None);
+    let pgn_dir: Option<String> = args.opt_value_from_str("--pgn-dir").unwrap_or(None);
+    let only_custom = args.contains("--only-custom") || args.contains("--custom-only");
+
+    let custom_games = pgn::load_all_user_games(pgn_file.as_deref(), pgn_dir.as_deref());
+    let games = if only_custom {
+        if custom_games.is_empty() {
+            eprintln!("Aviso: Se especificó --only-custom pero no se encontraron partidas personalizadas.");
+            eprintln!("Cargando las 29 partidas maestras históricas por defecto.");
+            games::get_master_games()
+        } else {
+            println!("Usando exclusivamente {} partidas de usuario (--only-custom)", custom_games.len());
+            custom_games
+        }
+    } else if !custom_games.is_empty() {
+        let mut all = custom_games;
+        let master = games::get_master_games();
+        println!("Combinando {} partidas de usuario con {} partidas maestras.", all.len(), master.len());
+        all.extend(master);
+        all
+    } else {
+        games::get_master_games()
+    };
+
     let theme_str: Option<String> = args.opt_value_from_str(["-t", "--theme"]).unwrap_or(None);
     let (mut selected_board, mut selected_pieces) = match theme_str
         .as_deref()
@@ -364,7 +417,7 @@ fn main() {
 
     if let Ok(Some(path)) = args.opt_value_from_str::<_, String>("--snapshot") {
         let assets = AssetManager::load_embedded();
-        let sim = ChessSimulator::new(260, 500, selected_board, selected_pieces, false);
+        let sim = ChessSimulator::new(260, 500, selected_board, selected_pieces, false, games.clone());
         let mut pixmap = tiny_skia::Pixmap::new(1920, 1080).unwrap();
         renderer::render_frame(&mut pixmap.as_mut(), &assets, &sim, bg_color, board_size, Instant::now());
         pixmap.save_png(&path).expect("Failed to save snapshot");
@@ -431,7 +484,7 @@ fn main() {
     };
 
     let assets = AssetManager::load_embedded();
-    let sim = ChessSimulator::new(move_speed, move_delay, selected_board, selected_pieces, rotate_theme);
+    let sim = ChessSimulator::new(move_speed, move_delay, selected_board, selected_pieces, rotate_theme, games);
 
     let mut app_state = AppState {
         registry_state: RegistryState::new(&globals),
