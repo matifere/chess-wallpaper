@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_castling_animation() {
-        let mut sim = ChessSimulator::new(260, 500, BoardStyle::Blue, PieceStyle::Neo, false);
+        let mut sim = ChessSimulator::new(260, 500, BoardStyle::Tournament, PieceStyle::Neo, false);
         // Forzar a la Opera Game (índice donde esté en la playlist)
         let opera_idx = sim.games.iter().position(|g| g.name.contains("Opera Game")).unwrap();
         sim.playlist_cursor = sim.playlist.iter().position(|&idx| idx == opera_idx).unwrap();

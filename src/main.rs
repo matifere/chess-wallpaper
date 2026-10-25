@@ -320,21 +320,23 @@ fn main() {
     let theme_str: Option<String> = args.opt_value_from_str(["-t", "--theme"]).unwrap_or(None);
     let (mut selected_board, mut selected_pieces) = match theme_str
         .as_deref()
-        .unwrap_or("blue")
+        .unwrap_or("tournament")
         .to_lowercase()
         .as_str()
     {
+        "tournament" | "torneo" => (BoardStyle::Tournament, PieceStyle::Neo),
+        "blue" | "azul" => (BoardStyle::Blue, PieceStyle::Neo),
         "green" | "verde" => (BoardStyle::Green, PieceStyle::Neo),
         "wood" | "walnut" | "madera" => (BoardStyle::Walnut, PieceStyle::Wood),
         "glass" | "vidrio" => (BoardStyle::Glass, PieceStyle::Glass),
         "icy" | "icy_sea" | "glaciar" | "hielo" => (BoardStyle::IcySea, PieceStyle::IcySea),
         "neon" => (BoardStyle::Neon, PieceStyle::Neon),
-        "classic" | "tournament" | "torneo" => (BoardStyle::Tournament, PieceStyle::Classic),
+        "classic" | "clasico" => (BoardStyle::Tournament, PieceStyle::Classic),
         "dark_wood" => (BoardStyle::DarkWood, PieceStyle::Wood),
         "marble" | "marmol" => (BoardStyle::Marble, PieceStyle::Classic),
         "bubblegum" | "rosa" | "pink" => (BoardStyle::Bubblegum, PieceStyle::Bubblegum),
         "8_bit" | "8bit" | "retro" => (BoardStyle::EightBit, PieceStyle::EightBit),
-        _ => (BoardStyle::Blue, PieceStyle::Neo), // Por defecto: Chess.com Blue + Neo
+        _ => (BoardStyle::Tournament, PieceStyle::Neo), // Por defecto: Tablero de Torneo + Piezas Neo
     };
 
     let board_str: Option<String> = args.opt_value_from_str("--board").unwrap_or(None);
