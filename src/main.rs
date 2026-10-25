@@ -106,7 +106,7 @@ impl AppState {
             }
         };
 
-        // Renderizar con tiny-skia
+        // Renderizar frame con tiny-skia
         if let Some(mut pixmap) = PixmapMut::from_bytes(canvas, width, height) {
             renderer::render_frame(&mut pixmap, &self.assets, &self.sim, Instant::now());
         }
@@ -114,7 +114,12 @@ impl AppState {
         if let Some(ref surface_mode) = self.surface_mode {
             let surface = surface_mode.wl_surface();
             surface.damage_buffer(0, 0, width as i32, height as i32);
-            surface.frame(&self.qh, FrameCallbackData(surface.clone()));
+
+            // Sincronización VSync por hardware: solicitar frame callback solo mientras anima
+            if matches!(self.sim.state, SimState::Animating(_)) {
+                surface.frame(&self.qh, FrameCallbackData(surface.clone()));
+            }
+
             if let Err(e) = buffer.attach_to(surface) {
                 eprintln!("Error attaching buffer: {e}");
             }
@@ -143,6 +148,7 @@ impl CompositorHandler for AppState {
     ) {
     }
 
+    // Callback de frame sincronizado con el monitor (VSync)
     fn frame(
         &mut self,
         _conn: &Connection,
@@ -150,6 +156,11 @@ impl CompositorHandler for AppState {
         _surface: &wl_surface::WlSurface,
         _time: u32,
     ) {
+        if matches!(self.sim.state, SimState::Animating(_)) {
+            let now = Instant::now();
+            self.sim.update(now);
+            self.draw();
+        }
     }
 
     fn surface_enter(
@@ -217,7 +228,6 @@ impl PointerHandler for AppState {
     fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_pointer::WlPointer, _: &[PointerEvent]) {}
 }
 
-// Window handler (para modo ventana)
 impl WindowHandler for AppState {
     fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &Window) {
         self.exit = true;
@@ -242,7 +252,6 @@ impl WindowHandler for AppState {
     }
 }
 
-// Layer shell handler (para modo fondo de pantalla)
 impl LayerShellHandler for AppState {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &LayerSurface) {
         self.exit = true;
@@ -354,31 +363,33 @@ fn main() {
         qh: qh.clone(),
     };
 
-    // Configurar temporizador reactivo ultra eficiente
+    // Temporizador reactivo: solo gestiona los descansos entre jugadas y reinicios
     let timer = Timer::from_duration(Duration::from_millis(50));
     loop_handle
         .insert_source(timer, move |_, _, state: &mut AppState| {
             let now = Instant::now();
-            let needs_redraw = state.sim.update(now);
-            if needs_redraw {
-                state.draw();
-            }
-
-            // Programar el siguiente despertar con precisión quirúrgica
             match state.sim.state {
-                SimState::Animating(_) => {
-                    // Animación activa: 60 FPS (~16ms)
-                    TimeoutAction::ToDuration(Duration::from_millis(16))
-                }
                 SimState::Idle { next_move_at } => {
-                    // Reposo absoluto: dormir hasta el próximo movimiento
-                    let wait = next_move_at.saturating_duration_since(now).max(Duration::from_millis(15));
-                    TimeoutAction::ToDuration(wait)
+                    if now >= next_move_at {
+                        state.sim.perform_next_move(now);
+                        state.draw(); // Esto dispara el primer frame y engancha CompositorHandler::frame (VSync)
+                        TimeoutAction::ToDuration(state.sim.move_duration + Duration::from_millis(50))
+                    } else {
+                        let wait = next_move_at.saturating_duration_since(now).max(Duration::from_millis(15));
+                        TimeoutAction::ToDuration(wait)
+                    }
                 }
                 SimState::GameOver { restart_at } => {
-                    // Partida terminada: dormir hasta el reinicio
-                    let wait = restart_at.saturating_duration_since(now).max(Duration::from_millis(15));
+                    if now >= restart_at {
+                        state.sim.update(now);
+                        state.draw();
+                    }
+                    let wait = restart_at.saturating_duration_since(now).max(Duration::from_millis(20));
                     TimeoutAction::ToDuration(wait)
+                }
+                SimState::Animating(_) => {
+                    // Animación activa: controlada a 60 FPS exactos por el compositor mediante CompositorHandler::frame
+                    TimeoutAction::ToDuration(Duration::from_millis(100))
                 }
             }
         })

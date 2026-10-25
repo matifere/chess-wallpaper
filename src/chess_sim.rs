@@ -4,12 +4,6 @@ use shakmaty::san::San;
 use shakmaty::{Chess, Move, Piece, Position};
 use crate::assets::BoardTheme;
 
-pub fn ease_out_back(t: f32) -> f32 {
-    let c1 = 1.70158;
-    let c3 = c1 + 1.0;
-    1.0 + c3 * (t - 1.0).powi(3) + c1 * (t - 1.0).powi(2)
-}
-
 #[derive(Clone, Debug)]
 pub struct MoveAnim {
     pub from: (u8, u8), // (file 0..7, rank 0..7)
@@ -31,14 +25,48 @@ impl MoveAnim {
         }
     }
 
+    /// Retorna la posición X/Y interpolada (0.0..7.0) con suavizado cúbico
     pub fn current_pos(&self, now: Instant) -> (f32, f32) {
         let p = self.progress(now);
-        let t = ease_out_back(p);
+        // Suavizado cubic smoothstep: 3p^2 - 2p^3
+        let t = p * p * (3.0 - 2.0 * p);
+
         let fx = self.from.0 as f32;
         let fy = self.from.1 as f32;
         let tx = self.to.0 as f32;
         let ty = self.to.1 as f32;
         (fx + (tx - fx) * t, fy + (ty - fy) * t)
+    }
+
+    /// Altura del salto parabólico (en unidades relativas a la casilla)
+    pub fn jump_height(&self, now: Instant) -> f32 {
+        let p = self.progress(now);
+        (p * std::f32::consts::PI).sin()
+    }
+
+    /// Física Jelly: Rebote amortiguado (Squash & Stretch)
+    /// Retorna (scale_x, scale_y)
+    pub fn jelly_scale(&self, now: Instant) -> (f32, f32) {
+        let p = self.progress(now);
+        if p < 0.20 {
+            // Despegue: estiramiento vertical leve
+            let t = p / 0.20;
+            let stretch = (t * std::f32::consts::PI).sin() * 0.10;
+            (1.0 - stretch * 0.5, 1.0 + stretch)
+        } else if p < 0.70 {
+            // En el aire: forma natural
+            (1.0, 1.0)
+        } else {
+            // Aterrizaje: rebote elástico amortiguado de gelatina
+            let t = (p - 0.70) / 0.30; // 0.0 .. 1.0
+            // Oscilación amortiguada: e^(-3t) * sin(10t)
+            let decay = (-3.5 * t).exp();
+            let wave = (t * std::f32::consts::PI * 3.5).sin();
+            let wobble = decay * wave * 0.22;
+
+            // Al aplastarse (wobble > 0): Y se comprime, X se ensancha
+            (1.0 + wobble, (1.0 - wobble * 0.9).max(0.6))
+        }
     }
 }
 
@@ -97,8 +125,8 @@ impl ChessSimulator {
                 next_move_at: Instant::now() + Duration::from_millis(600),
             },
             theme: BoardTheme::PinkBlue,
-            move_duration: Duration::from_millis(320),
-            pause_between_moves: Duration::from_millis(1600),
+            move_duration: Duration::from_millis(460), // Movimiento suave y visible
+            pause_between_moves: Duration::from_millis(1500),
             current_game_index: 0,
             current_move_index: 0,
             games,
@@ -109,13 +137,13 @@ impl ChessSimulator {
         match self.state {
             SimState::Animating(ref anim) => {
                 if anim.progress(now) >= 1.0 {
-                    // Animación terminada
+                    // Animación finalizada
                     self.state = SimState::Idle {
                         next_move_at: now + self.pause_between_moves,
                     };
                     return true;
                 }
-                true // todavía animando, requiere redraw
+                true // Todavía animando
             }
             SimState::Idle { next_move_at } => {
                 if now >= next_move_at {
@@ -134,7 +162,7 @@ impl ChessSimulator {
         }
     }
 
-    fn perform_next_move(&mut self, now: Instant) {
+    pub fn perform_next_move(&mut self, now: Instant) {
         if self.pos.is_game_over() {
             self.state = SimState::GameOver {
                 restart_at: now + Duration::from_secs(5),
@@ -142,7 +170,7 @@ impl ChessSimulator {
             return;
         }
 
-        // 1. Intentar jugar el movimiento de la partida PGN actual
+        // 1. Intentar movimiento de la partida PGN
         let current_game = &self.games[self.current_game_index];
         let next_m = if self.current_move_index < current_game.len() {
             let san_str = current_game[self.current_move_index];
@@ -160,7 +188,7 @@ impl ChessSimulator {
             None
         };
 
-        // 2. Si terminó la partida o falló el SAN, elegir movimiento legal inteligente
+        // 2. Si no hay jugada PGN, seleccionar movimiento legal
         let chosen_move = match next_m {
             Some(m) => m,
             None => {
@@ -171,7 +199,6 @@ impl ChessSimulator {
                     };
                     return;
                 }
-                // Preferir capturas o jaques
                 let mut rng = rand::rng();
                 let captures: Vec<Move> = legal.iter().filter(|m| m.is_capture()).cloned().collect();
                 if !captures.is_empty() && rand::random::<f32>() < 0.6 {
@@ -182,7 +209,6 @@ impl ChessSimulator {
             }
         };
 
-        // Guardar datos para la animación
         let from_sq = chosen_move.from().unwrap();
         let to_sq = chosen_move.to();
         let piece = self.pos.board().piece_at(from_sq).unwrap();
@@ -197,9 +223,7 @@ impl ChessSimulator {
             duration: self.move_duration,
         };
 
-        // Aplicar movimiento en la posición interna
         self.pos.play_unchecked(chosen_move);
-
         self.state = SimState::Animating(anim);
     }
 
