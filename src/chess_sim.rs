@@ -1,8 +1,10 @@
 use std::time::{Duration, Instant};
+use rand::seq::SliceRandom;
 use rand::seq::IndexedRandom;
 use shakmaty::san::San;
 use shakmaty::{Chess, Move, Piece, Position};
 use crate::assets::BoardTheme;
+use crate::games::{get_master_games, GameData};
 
 #[derive(Clone, Debug)]
 pub struct MoveAnim {
@@ -25,7 +27,7 @@ impl MoveAnim {
         }
     }
 
-    /// Retorna la posición X/Y interpolada (0.0..7.0) con suavizado cúbico
+    /// Posición X/Y con aceleración y desaceleración fluida
     pub fn current_pos(&self, now: Instant) -> (f32, f32) {
         let p = self.progress(now);
         // Suavizado cubic smoothstep: 3p^2 - 2p^3
@@ -38,34 +40,31 @@ impl MoveAnim {
         (fx + (tx - fx) * t, fy + (ty - fy) * t)
     }
 
-    /// Altura del salto parabólico (en unidades relativas a la casilla)
+    /// Altura del salto parabólico (arco 3D)
     pub fn jump_height(&self, now: Instant) -> f32 {
         let p = self.progress(now);
         (p * std::f32::consts::PI).sin()
     }
 
-    /// Física Jelly: Rebote amortiguado (Squash & Stretch)
-    /// Retorna (scale_x, scale_y)
+    /// Física Jelly: Rebote elástico amortiguado al tocar tierra
     pub fn jelly_scale(&self, now: Instant) -> (f32, f32) {
         let p = self.progress(now);
         if p < 0.20 {
-            // Despegue: estiramiento vertical leve
+            // Despegue elástico
             let t = p / 0.20;
-            let stretch = (t * std::f32::consts::PI).sin() * 0.10;
+            let stretch = (t * std::f32::consts::PI).sin() * 0.12;
             (1.0 - stretch * 0.5, 1.0 + stretch)
         } else if p < 0.70 {
-            // En el aire: forma natural
+            // Vuelo en el aire
             (1.0, 1.0)
         } else {
-            // Aterrizaje: rebote elástico amortiguado de gelatina
-            let t = (p - 0.70) / 0.30; // 0.0 .. 1.0
-            // Oscilación amortiguada: e^(-3t) * sin(10t)
-            let decay = (-3.5 * t).exp();
+            // Aterrizaje: squish y wobble amortiguado
+            let t = (p - 0.70) / 0.30;
+            let decay = (-4.0 * t).exp();
             let wave = (t * std::f32::consts::PI * 3.5).sin();
-            let wobble = decay * wave * 0.22;
+            let wobble = decay * wave * 0.24;
 
-            // Al aplastarse (wobble > 0): Y se comprime, X se ensancha
-            (1.0 + wobble, (1.0 - wobble * 0.9).max(0.6))
+            (1.0 + wobble, (1.0 - wobble * 0.85).max(0.6))
         }
     }
 }
@@ -82,54 +81,43 @@ pub struct ChessSimulator {
     pub theme: BoardTheme,
     pub move_duration: Duration,
     pub pause_between_moves: Duration,
-    current_game_index: usize,
+    pub pause_after_game: Duration,
+
+    games: Vec<GameData>,
+    playlist: Vec<usize>,
+    playlist_cursor: usize,
     current_move_index: usize,
-    games: Vec<Vec<&'static str>>,
 }
 
 impl ChessSimulator {
-    pub fn new() -> Self {
-        let games = vec![
-            // 1. The Opera Game: Morphy vs Duke of Brunswick (1858)
-            vec![
-                "e4", "e5", "Nf3", "d6", "d4", "Bg4", "dxe5", "Bxf3", "Qxf3", "dxe5",
-                "Bc4", "Nf6", "Qb3", "Qe7", "Nc3", "c6", "Bg5", "b5", "Nxb5", "cxb5",
-                "Bxb5+", "Nbd7", "O-O-O", "Rd8", "Rxd7", "Rxd7", "Rd1", "Qe6", "Bxd7+", "Nxd7",
-                "Qb8+", "Nxb8", "Rd8#"
-            ],
-            // 2. The Immortal Game: Adolf Anderssen vs Lionel Kieseritzky (1851)
-            vec![
-                "e4", "e5", "f4", "exf4", "Bc4", "Qh4+", "Kf1", "b5", "Bxb5", "Nf6",
-                "Nf3", "Qh6", "d3", "Nh5", "Nh4", "Qg5", "Nf5", "c6", "g4", "Nf6",
-                "Rg1", "cxb5", "h4", "Qg6", "h5", "Qg5", "Qf3", "Ng8", "Bxf4", "Qf6",
-                "Nc3", "Bc5", "Nd5", "Qxb2", "Bd6", "Bxg1", "e5", "Qxa1+", "Ke2", "Na6",
-                "Nxg7+", "Kd8", "Qf6+", "Nxf6", "Be7#"
-            ],
-            // 3. The Game of the Century: Donald Byrne vs Bobby Fischer (1956)
-            vec![
-                "Nf3", "Nf6", "c4", "g6", "Nc3", "Bg7", "d4", "O-O", "Bf4", "d5",
-                "Qb3", "dxc4", "Qxc4", "c6", "e4", "Nbd7", "Rd1", "Nb6", "Qc5", "Bg4",
-                "Bg5", "Na4", "Qa3", "Nxc3", "bxc3", "Nxe4", "Bxe7", "Qb6", "Bc4", "Nxc3",
-                "Bc5", "Rfe8+", "Kf1", "Be6", "Bxb6", "Bxc4+", "Kg1", "Ne2+", "Kf1", "Nxd4+",
-                "Kg1", "Ne2+", "Kf1", "Nc3+", "Kg1", "axb6", "Qb4", "Ra4", "Qxb6", "Nxd1",
-                "h3", "Rxa2", "Kh2", "Nxf2", "Re1", "Rxe1", "Qd8+", "Bf8", "Nxe1", "Bd5",
-                "Nf3", "Ne4", "Qb8", "b5", "h4", "h5", "Ne5", "Kg7", "Kg1", "Bc5+",
-                "Kf1", "Ng3+", "Ke1", "Bb4+", "Kd1", "Bb3+", "Kc1", "Ne2+", "Kb1", "Nc3+",
-                "Kc1", "Rc2#"
-            ]
-        ];
+    pub fn new(move_ms: u64, delay_ms: u64) -> Self {
+        let games = get_master_games();
+        let mut playlist: Vec<usize> = (0..games.len()).collect();
+        let mut rng = rand::rng();
+        playlist.shuffle(&mut rng);
+
+        let initial_theme = match rand::random::<u8>() % 3 {
+            0 => BoardTheme::PinkBlue,
+            1 => BoardTheme::LimeOchre,
+            _ => BoardTheme::PurpleCyan,
+        };
+
+        println!("Cargadas {} partidas maestras históricas.", games.len());
+        println!("Partida inicial [1/{}]: '{}'", games.len(), games[playlist[0]].name);
 
         Self {
             pos: Chess::default(),
             state: SimState::Idle {
-                next_move_at: Instant::now() + Duration::from_millis(600),
+                next_move_at: Instant::now() + Duration::from_millis(400),
             },
-            theme: BoardTheme::PinkBlue,
-            move_duration: Duration::from_millis(460), // Movimiento suave y visible
-            pause_between_moves: Duration::from_millis(1500),
-            current_game_index: 0,
-            current_move_index: 0,
+            theme: initial_theme,
+            move_duration: Duration::from_millis(move_ms),
+            pause_between_moves: Duration::from_millis(delay_ms),
+            pause_after_game: Duration::from_millis(2200),
             games,
+            playlist,
+            playlist_cursor: 0,
+            current_move_index: 0,
         }
     }
 
@@ -137,13 +125,12 @@ impl ChessSimulator {
         match self.state {
             SimState::Animating(ref anim) => {
                 if anim.progress(now) >= 1.0 {
-                    // Animación finalizada
                     self.state = SimState::Idle {
                         next_move_at: now + self.pause_between_moves,
                     };
                     return true;
                 }
-                true // Todavía animando
+                true
             }
             SimState::Idle { next_move_at } => {
                 if now >= next_move_at {
@@ -164,16 +151,18 @@ impl ChessSimulator {
 
     pub fn perform_next_move(&mut self, now: Instant) {
         if self.pos.is_game_over() {
+            println!("¡Fin de la partida! Próxima partida en {:.1}s...", self.pause_after_game.as_secs_f32());
             self.state = SimState::GameOver {
-                restart_at: now + Duration::from_secs(5),
+                restart_at: now + self.pause_after_game,
             };
             return;
         }
 
-        // 1. Intentar movimiento de la partida PGN
-        let current_game = &self.games[self.current_game_index];
-        let next_m = if self.current_move_index < current_game.len() {
-            let san_str = current_game[self.current_move_index];
+        let current_game_idx = self.playlist[self.playlist_cursor];
+        let current_game = &self.games[current_game_idx];
+
+        let next_m = if self.current_move_index < current_game.moves.len() {
+            let san_str = current_game.moves[self.current_move_index];
             if let Ok(san) = san_str.parse::<San>() {
                 if let Ok(m) = san.to_move(&self.pos) {
                     self.current_move_index += 1;
@@ -188,20 +177,20 @@ impl ChessSimulator {
             None
         };
 
-        // 2. Si no hay jugada PGN, seleccionar movimiento legal
+        // Si se terminaron las jugadas del PGN o fue jaque mate
         let chosen_move = match next_m {
             Some(m) => m,
             None => {
                 let legal = self.pos.legal_moves();
                 if legal.is_empty() {
                     self.state = SimState::GameOver {
-                        restart_at: now + Duration::from_secs(5),
+                        restart_at: now + self.pause_after_game,
                     };
                     return;
                 }
                 let mut rng = rand::rng();
                 let captures: Vec<Move> = legal.iter().filter(|m| m.is_capture()).cloned().collect();
-                if !captures.is_empty() && rand::random::<f32>() < 0.6 {
+                if !captures.is_empty() && rand::random::<f32>() < 0.65 {
                     *captures.choose(&mut rng).unwrap()
                 } else {
                     *legal.choose(&mut rng).unwrap()
@@ -230,10 +219,35 @@ impl ChessSimulator {
     fn reset_game(&mut self) {
         self.pos = Chess::default();
         self.current_move_index = 0;
-        self.current_game_index = (self.current_game_index + 1) % self.games.len();
+
+        // Avanzar en la playlist aleatoria
+        self.playlist_cursor += 1;
+        if self.playlist_cursor >= self.playlist.len() {
+            let last_game = self.playlist[self.playlist.len() - 1];
+            let mut rng = rand::rng();
+            self.playlist.shuffle(&mut rng);
+            // Evitar que la primera de la nueva tanda sea idéntica a la última
+            if self.playlist.len() > 1 && self.playlist[0] == last_game {
+                self.playlist.swap(0, 1);
+            }
+            self.playlist_cursor = 0;
+            println!("--- Playlist de partidas completada. Nueva mezcla aleatoria ---");
+        }
+
+        // Cambiar paleta de colores aleatoriamente
         self.theme = self.theme.next();
+
+        let next_idx = self.playlist[self.playlist_cursor];
+        println!(
+            "Nueva partida [{}/{}]: '{}' (Tema: {:?})",
+            self.playlist_cursor + 1,
+            self.playlist.len(),
+            self.games[next_idx].name,
+            self.theme
+        );
+
         self.state = SimState::Idle {
-            next_move_at: Instant::now() + Duration::from_millis(800),
+            next_move_at: Instant::now() + Duration::from_millis(500),
         };
     }
 }

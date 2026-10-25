@@ -1,5 +1,6 @@
 mod assets;
 mod chess_sim;
+mod games;
 mod renderer;
 
 use std::num::NonZeroU32;
@@ -291,7 +292,7 @@ fn main() {
 
     if let Ok(Some(path)) = args.opt_value_from_str::<_, String>("--snapshot") {
         let assets = AssetManager::load_embedded();
-        let sim = ChessSimulator::new();
+        let sim = ChessSimulator::new(260, 500);
         let mut pixmap = tiny_skia::Pixmap::new(800, 800).unwrap();
         renderer::render_frame(&mut pixmap.as_mut(), &assets, &sim, Instant::now());
         pixmap.save_png(&path).expect("Failed to save snapshot");
@@ -300,9 +301,20 @@ fn main() {
     }
 
     let is_window_mode = args.contains(["-w", "--window"]);
+    let is_fast = args.contains(["-f", "--fast"]);
+
+    let (default_speed, default_delay) = if is_fast {
+        (200, 320)
+    } else {
+        (260, 500)
+    };
+
+    let move_speed: u64 = args.opt_value_from_str(["-s", "--speed"]).unwrap_or(None).unwrap_or(default_speed);
+    let move_delay: u64 = args.opt_value_from_str(["-d", "--delay"]).unwrap_or(None).unwrap_or(default_delay);
 
     println!("Iniciando Chess Wallpaper (Rust)");
     println!("Modo: {}", if is_window_mode { "Ventana de prueba (-w)" } else { "Fondo de escritorio Layer-Shell" });
+    println!("Velocidad de salto: {move_speed} ms | Pausa entre jugadas: {move_delay} ms");
 
     let conn = Connection::connect_to_env().expect("No se pudo conectar al compositor Wayland");
     let (globals, event_queue) = registry_queue_init(&conn).expect("Error al inicializar registro Wayland");
@@ -345,7 +357,7 @@ fn main() {
     };
 
     let assets = AssetManager::load_embedded();
-    let sim = ChessSimulator::new();
+    let sim = ChessSimulator::new(move_speed, move_delay);
 
     let mut app_state = AppState {
         registry_state: RegistryState::new(&globals),
@@ -372,8 +384,8 @@ fn main() {
                 SimState::Idle { next_move_at } => {
                     if now >= next_move_at {
                         state.sim.perform_next_move(now);
-                        state.draw(); // Esto dispara el primer frame y engancha CompositorHandler::frame (VSync)
-                        TimeoutAction::ToDuration(state.sim.move_duration + Duration::from_millis(50))
+                        state.draw(); // Dispara el primer frame y engancha CompositorHandler::frame (VSync)
+                        TimeoutAction::ToDuration(state.sim.move_duration + Duration::from_millis(40))
                     } else {
                         let wait = next_move_at.saturating_duration_since(now).max(Duration::from_millis(15));
                         TimeoutAction::ToDuration(wait)
@@ -388,8 +400,7 @@ fn main() {
                     TimeoutAction::ToDuration(wait)
                 }
                 SimState::Animating(_) => {
-                    // Animación activa: controlada a 60 FPS exactos por el compositor mediante CompositorHandler::frame
-                    TimeoutAction::ToDuration(Duration::from_millis(100))
+                    TimeoutAction::ToDuration(Duration::from_millis(80))
                 }
             }
         })
