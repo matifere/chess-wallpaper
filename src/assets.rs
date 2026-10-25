@@ -1,3 +1,4 @@
+use fontdue::{Font, FontSettings};
 use shakmaty::{Color, Role};
 use tiny_skia::Pixmap;
 
@@ -185,10 +186,17 @@ pub struct AssetManager {
     pub pieces_alpha: PieceSet,
     pub pieces_bubblegum: PieceSet,
     pub pieces_8_bit: PieceSet,
+
+    // Tipografía UI
+    pub ui_font: Font,
 }
 
 impl AssetManager {
     pub fn load_embedded() -> Self {
+        let font_bytes = include_bytes!("../assets/fonts/ui_font.ttf") as &[u8];
+        let ui_font = Font::from_bytes(font_bytes, FontSettings::default())
+            .expect("Error al decodificar la fuente UI embebida");
+
         Self {
             board_blue: load_board!("blue"),
             board_green: load_board!("green"),
@@ -212,6 +220,8 @@ impl AssetManager {
             pieces_alpha: load_pieces!("alpha"),
             pieces_bubblegum: load_pieces!("bubblegum"),
             pieces_8_bit: load_pieces!("8_bit"),
+
+            ui_font,
         }
     }
 

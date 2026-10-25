@@ -1,5 +1,9 @@
+#[derive(Clone, Debug)]
 pub struct GameData {
-    pub name: &'static str,
+    pub white: &'static str,
+    pub black: &'static str,
+    pub event: &'static str,
+    pub year: u16,
     pub moves: &'static [&'static str],
 }
 
@@ -7,7 +11,10 @@ pub fn get_master_games() -> Vec<GameData> {
     vec![
         // 1. The Opera Game: Morphy vs Duke of Brunswick (1858)
         GameData {
-            name: "Paul Morphy vs Duke of Brunswick (1858) - The Opera Game",
+            white: "Paul Morphy",
+            black: "Duque de Brunswick",
+            event: "The Opera Game",
+            year: 1858,
             moves: &[
                 "e4", "e5", "Nf3", "d6", "d4", "Bg4", "dxe5", "Bxf3", "Qxf3", "dxe5",
                 "Bc4", "Nf6", "Qb3", "Qe7", "Nc3", "c6", "Bg5", "b5", "Nxb5", "cxb5",
@@ -17,7 +24,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 2. The Immortal Game: Adolf Anderssen vs Lionel Kieseritzky (1851)
         GameData {
-            name: "Adolf Anderssen vs Lionel Kieseritzky (1851) - The Immortal Game",
+            white: "Adolf Anderssen",
+            black: "Lionel Kieseritzky",
+            event: "The Immortal Game",
+            year: 1851,
             moves: &[
                 "e4", "e5", "f4", "exf4", "Bc4", "Qh4+", "Kf1", "b5", "Bxb5", "Nf6",
                 "Nf3", "Qh6", "d3", "Nh5", "Nh4", "Qg5", "Nf5", "c6", "g4", "Nf6",
@@ -28,7 +38,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 3. The Evergreen Game: Adolf Anderssen vs Jean Dufresne (1852)
         GameData {
-            name: "Adolf Anderssen vs Jean Dufresne (1852) - The Evergreen Game",
+            white: "Adolf Anderssen",
+            black: "Jean Dufresne",
+            event: "The Evergreen Game",
+            year: 1852,
             moves: &[
                 "e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "b4", "Bxb4", "c3", "Ba5",
                 "d4", "exd4", "O-O", "d3", "Qb3", "Qf6", "e5", "Qg6", "Re1", "Nge7",
@@ -39,7 +52,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 4. Reti vs Tartakower: Double Check Mate (1910)
         GameData {
-            name: "Richard Reti vs Savielly Tartakower (1910) - Double Check Mate",
+            white: "Richard Réti",
+            black: "Savielly Tartakower",
+            event: "Double Check Mate",
+            year: 1910,
             moves: &[
                 "e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Nf6", "Qd3", "e5",
                 "dxe5", "Qa5+", "Bd2", "Qxe5", "O-O-O", "Nxe4", "Qd8+", "Kxd8", "Bg5+", "Kc7", "Bd8#"
@@ -47,7 +63,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 5. The Game of the Century: Donald Byrne vs Bobby Fischer (1956)
         GameData {
-            name: "Donald Byrne vs Bobby Fischer (1956) - The Game of the Century",
+            white: "Donald Byrne",
+            black: "Bobby Fischer",
+            event: "The Game of the Century",
+            year: 1956,
             moves: &[
                 "Nf3", "Nf6", "c4", "g6", "Nc3", "Bg7", "d4", "O-O", "Bf4", "d5",
                 "Qb3", "dxc4", "Qxc4", "c6", "e4", "Nbd7", "Rd1", "Nb6", "Qc5", "Bg4",
@@ -62,7 +81,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 6. Edward Lasker vs Sir George Thomas (1912) - The King Hunt
         GameData {
-            name: "Edward Lasker vs George Thomas (1912) - The King Hunt",
+            white: "Edward Lasker",
+            black: "Sir George Thomas",
+            event: "The King Hunt",
+            year: 1912,
             moves: &[
                 "d4", "f5", "Nf3", "e6", "Nc3", "Nf6", "Bg5", "Be7", "Bxf6", "Bxf6",
                 "e4", "fxe4", "Nxe4", "b6", "Ne5", "O-O", "Bd3", "Bb7", "Qh5", "Qe7",
@@ -72,7 +94,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 7. Akiba Rubinstein's Immortal Game vs Georg Rotlewi (1907)
         GameData {
-            name: "Georg Rotlewi vs Akiba Rubinstein (1907) - Rubinstein's Immortal",
+            white: "Georg Rotlewi",
+            black: "Akiba Rubinstein",
+            event: "Rubinstein's Immortal",
+            year: 1907,
             moves: &[
                 "d4", "d5", "Nf3", "e6", "e3", "c5", "c4", "Nc6", "Nc3", "Nf6",
                 "dxc5", "Bxc5", "a3", "a6", "b4", "Bd6", "Bb2", "O-O", "Qd2", "Qe7",
@@ -83,7 +108,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 8. Mikhail Tal vs Bent Larsen (1965) - Tal's Knight Sacrifice
         GameData {
-            name: "Mikhail Tal vs Bent Larsen (1965) - Tal's Attack",
+            white: "Mikhail Tal",
+            black: "Bent Larsen",
+            event: "Tal's Attack",
+            year: 1965,
             moves: &[
                 "e4", "c5", "Nf3", "Nc6", "d4", "cxd4", "Nxd4", "e6", "Nc3", "d6",
                 "Be3", "Nf6", "f4", "Be7", "Qf3", "O-O", "O-O-O", "Qc7", "Ndb5", "Qb8",
@@ -95,7 +123,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 9. Young Magnus Carlsen vs Sipke Ernst (2004)
         GameData {
-            name: "Magnus Carlsen vs Sipke Ernst (2004) - Young Magnus",
+            white: "Magnus Carlsen",
+            black: "Sipke Ernst",
+            event: "Young Magnus",
+            year: 2004,
             moves: &[
                 "e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5", "Ng3", "Bg6",
                 "h4", "h6", "Nf3", "Nd7", "h5", "Bh7", "Bd3", "Bxd3", "Qxd3", "e6",
@@ -107,7 +138,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 10. Deep Blue vs Garry Kasparov (1997) - Game 6
         GameData {
-            name: "Deep Blue vs Garry Kasparov (1997) - Game 6",
+            white: "Deep Blue",
+            black: "Garry Kasparov",
+            event: "Match Game 6",
+            year: 1997,
             moves: &[
                 "e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Nd7", "Ng5", "Ngf6",
                 "Bd3", "e6", "N1f3", "h6", "Nxe6", "Qe7", "O-O", "fxe6", "Bg6+", "Kd8",
@@ -117,7 +151,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 11. Emanuel Lasker vs Johann Bauer (1889) - Double Bishop Sacrifice
         GameData {
-            name: "Emanuel Lasker vs Johann Bauer (1889) - Double Bishop Sacrifice",
+            white: "Emanuel Lasker",
+            black: "Johann Bauer",
+            event: "Double Bishop Sacrifice",
+            year: 1889,
             moves: &[
                 "f4", "d5", "e3", "Nf6", "b3", "e6", "Bb2", "Be7", "Bd3", "b6",
                 "Nf3", "Bb7", "Nc3", "Nbd7", "O-O", "O-O", "Ne2", "c5", "Ng3", "Qc7",
@@ -129,7 +166,10 @@ pub fn get_master_games() -> Vec<GameData> {
         },
         // 12. Nigel Short vs Jan Timman (1991) - The King March
         GameData {
-            name: "Nigel Short vs Jan Timman (1991) - The King March",
+            white: "Nigel Short",
+            black: "Jan Timman",
+            event: "The King March",
+            year: 1991,
             moves: &[
                 "e4", "Nf6", "e5", "Nd5", "d4", "d6", "Nf3", "g6", "Bc4", "Nb6",
                 "Bb3", "Bg7", "Qe2", "Nc6", "O-O", "O-O", "h3", "a5", "a4", "dxe5",

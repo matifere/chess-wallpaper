@@ -1,5 +1,5 @@
 use std::time::Instant;
-use shakmaty::{Piece, Position, Square};
+use shakmaty::{Color, Piece, Position, Role, Square};
 use tiny_skia::{Color as SkColor, FilterQuality, Paint, PathBuilder, PixmapMut, PixmapPaint, Rect, Transform};
 
 use crate::assets::AssetManager;
@@ -19,6 +19,160 @@ fn add_rounded_rect(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, r: f32
     pb.close();
 }
 
+fn draw_text(
+    canvas: &mut PixmapMut,
+    font: &fontdue::Font,
+    text: &str,
+    start_x: f32,
+    baseline_y: f32,
+    font_size: f32,
+    color: SkColor,
+) -> f32 {
+    let mut cur_x = start_x;
+    let cr = color.red() * 255.0;
+    let cg = color.green() * 255.0;
+    let cb = color.blue() * 255.0;
+    let ca = color.alpha();
+
+    for ch in text.chars() {
+        let (metrics, bitmap) = font.rasterize(ch, font_size);
+        if metrics.width > 0 && metrics.height > 0 {
+            let gx = (cur_x + metrics.xmin as f32).round() as i32;
+            let gy = (baseline_y - (metrics.height as f32 + metrics.ymin as f32)).round() as i32;
+
+            for row in 0..metrics.height {
+                let py = gy + row as i32;
+                if py < 0 || py >= canvas.height() as i32 {
+                    continue;
+                }
+                for col in 0..metrics.width {
+                    let px = gx + col as i32;
+                    if px < 0 || px >= canvas.width() as i32 {
+                        continue;
+                    }
+                    let coverage = bitmap[row * metrics.width + col];
+                    if coverage == 0 {
+                        continue;
+                    }
+
+                    let alpha_f = (coverage as f32 / 255.0) * ca;
+                    let dst_idx = (py as usize * canvas.width() as usize + px as usize) * 4;
+                    let pixels = canvas.data_mut();
+
+                    let dr = pixels[dst_idx] as f32;
+                    let dg = pixels[dst_idx + 1] as f32;
+                    let db = pixels[dst_idx + 2] as f32;
+                    let da = pixels[dst_idx + 3] as f32;
+
+                    let sr = cr * alpha_f;
+                    let sg = cg * alpha_f;
+                    let sb = cb * alpha_f;
+                    let sa = 255.0 * alpha_f;
+
+                    let inv_sa = 1.0 - alpha_f;
+                    pixels[dst_idx] = (sr + dr * inv_sa).round().min(255.0) as u8;
+                    pixels[dst_idx + 1] = (sg + dg * inv_sa).round().min(255.0) as u8;
+                    pixels[dst_idx + 2] = (sb + db * inv_sa).round().min(255.0) as u8;
+                    pixels[dst_idx + 3] = (sa + da * inv_sa).round().min(255.0) as u8;
+                }
+            }
+        }
+        cur_x += metrics.advance_width;
+    }
+    cur_x
+}
+
+fn measure_text(font: &fontdue::Font, text: &str, font_size: f32) -> f32 {
+    let mut width = 0.0;
+    for ch in text.chars() {
+        let metrics = font.metrics(ch, font_size);
+        width += metrics.advance_width;
+    }
+    width
+}
+
+fn draw_player_badge(
+    canvas: &mut PixmapMut,
+    assets: &AssetManager,
+    sim: &ChessSimulator,
+    color: Color,
+    player_name: &str,
+    meta_text: &str,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    is_active_turn: bool,
+) {
+    let corner_radius = 12.0;
+
+    // 1. Sombra suave del badge
+    let mut shadow_paint = Paint::default();
+    shadow_paint.set_color(SkColor::from_rgba8(0, 0, 0, 75));
+    let mut pb_shadow = PathBuilder::new();
+    add_rounded_rect(&mut pb_shadow, x - 2.0, y + 4.0, w + 4.0, h + 6.0, corner_radius + 2.0);
+    if let Some(path) = pb_shadow.finish() {
+        canvas.fill_path(&path, &shadow_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    }
+
+    // 2. Fondo del badge (sutilmente más luminoso si es su turno activo)
+    let mut bg_paint = Paint::default();
+    if is_active_turn {
+        bg_paint.set_color(SkColor::from_rgba8(30, 34, 52, 255));
+    } else {
+        bg_paint.set_color(SkColor::from_rgba8(24, 27, 40, 255));
+    }
+    let mut pb_bg = PathBuilder::new();
+    add_rounded_rect(&mut pb_bg, x, y, w, h, corner_radius);
+    if let Some(path) = pb_bg.finish() {
+        canvas.fill_path(&path, &bg_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    }
+
+    // 3. Borde fino elegante
+    let mut border_paint = Paint::default();
+    if is_active_turn {
+        border_paint.set_color(SkColor::from_rgba8(82, 108, 160, 210));
+    } else {
+        border_paint.set_color(SkColor::from_rgba8(48, 54, 78, 160));
+    }
+    let mut stroke = tiny_skia::Stroke::default();
+    stroke.width = 1.2;
+    let mut pb_border = PathBuilder::new();
+    add_rounded_rect(&mut pb_border, x, y, w, h, corner_radius);
+    if let Some(path) = pb_border.finish() {
+        canvas.stroke_path(&path, &border_paint, &stroke, Transform::identity(), None);
+    }
+
+    // 4. Mini icono / Avatar de la pieza (Rey)
+    let avatar_pix = assets.get_piece(sim.piece_style, color, Role::King);
+    let avatar_dim = (h * 0.68).round().clamp(22.0, 30.0);
+    let scale = avatar_dim / (avatar_pix.width() as f32);
+    let mut avatar_paint = PixmapPaint::default();
+    avatar_paint.quality = FilterQuality::Bicubic;
+    let ax = x + 12.0;
+    let ay = y + (h - avatar_dim) / 2.0;
+    let xform = Transform::from_scale(scale, scale).post_translate(ax, ay);
+    canvas.draw_pixmap(0, 0, avatar_pix.as_ref(), &avatar_paint, xform, None);
+
+    // 5. Nombre del jugador
+    let name_font_size = (h * 0.38).round().clamp(13.0, 16.0);
+    let name_x = ax + avatar_dim + 10.0;
+    let baseline_y = y + h * 0.64;
+    let name_color = if is_active_turn {
+        SkColor::from_rgba8(250, 252, 255, 255)
+    } else {
+        SkColor::from_rgba8(220, 226, 238, 255)
+    };
+    draw_text(canvas, &assets.ui_font, player_name, name_x, baseline_y, name_font_size, name_color);
+
+    // 6. Metadatos a la derecha (Evento / Jugada)
+    let meta_font_size = (h * 0.30).round().clamp(11.0, 13.0);
+    let meta_w = measure_text(&assets.ui_font, meta_text, meta_font_size);
+    let meta_x = (x + w - meta_w - 14.0).max(name_x + 120.0);
+    let meta_color = SkColor::from_rgba8(138, 152, 178, 255);
+    draw_text(canvas, &assets.ui_font, meta_text, meta_x, baseline_y, meta_font_size, meta_color);
+}
+
 pub fn render_frame(
     canvas: &mut PixmapMut,
     assets: &AssetManager,
@@ -34,7 +188,7 @@ pub fn render_frame(
     canvas.fill(bg_color);
 
     // 2. Calcular tamaño fijo del tablero
-    let max_avail = (width * 0.92).min(height * 0.92);
+    let max_avail = (width * 0.90).min(height * 0.76); // Reserva vertical para badges
     let target_board_dim = desired_board_size.min(max_avail);
     let tile_size = (target_board_dim / 8.0).floor().max(16.0);
     let board_total_w = tile_size * 8.0;
@@ -189,6 +343,57 @@ pub fn render_frame(
         if let Some(ref sec) = anim.secondary {
             draw_animated_piece(canvas, assets, sim, sec, progress, board_x, board_y, tile_size);
         }
+    }
+
+    // 10. Badges de jugadores estilo retransmisión (Opción A)
+    let badge_h = (tile_size * 0.52).floor().clamp(38.0, 44.0);
+    let badge_pad = 12.0;
+    let badge_w = frame_w;
+    let badge_x = frame_x;
+
+    let top_badge_y = frame_y - badge_h - badge_pad;
+    let bot_badge_y = frame_y + frame_h + badge_pad;
+
+    // Solo dibujar si la ventana tiene altura suficiente
+    if top_badge_y >= 6.0 && bot_badge_y + badge_h <= height - 6.0 {
+        let game = sim.current_game();
+        let current_turn = sim.pos.turn();
+
+        // Badge superior: Jugador de Negras
+        let top_meta = format!("{} ({})", game.event, game.year);
+        draw_player_badge(
+            canvas,
+            assets,
+            sim,
+            Color::Black,
+            game.black,
+            &top_meta,
+            badge_x,
+            top_badge_y,
+            badge_w,
+            badge_h,
+            current_turn == Color::Black,
+        );
+
+        // Badge inferior: Jugador de Blancas
+        let bot_meta = if matches!(sim.state, SimState::GameOver { .. }) {
+            format!("Fin de partida • Jugada {}/{}", sim.current_move_num(), sim.total_moves())
+        } else {
+            format!("Jugada {}/{}", sim.current_move_num(), sim.total_moves())
+        };
+        draw_player_badge(
+            canvas,
+            assets,
+            sim,
+            Color::White,
+            game.white,
+            &bot_meta,
+            badge_x,
+            bot_badge_y,
+            badge_w,
+            badge_h,
+            current_turn == Color::White,
+        );
     }
 }
 

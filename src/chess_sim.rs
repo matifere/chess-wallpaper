@@ -100,9 +100,17 @@ impl ChessSimulator {
         let mut rng = rand::rng();
         playlist.shuffle(&mut rng);
 
+        let first_game = &games[playlist[0]];
         println!("Cargadas {} partidas maestras históricas.", games.len());
         println!("Tablero: {:?} | Piezas: {:?}", board_style, piece_style);
-        println!("Partida inicial [1/{}]: '{}'", games.len(), games[playlist[0]].name);
+        println!(
+            "Partida inicial [1/{}]: '{} vs {}' - {} ({})",
+            games.len(),
+            first_game.white,
+            first_game.black,
+            first_game.event,
+            first_game.year
+        );
 
         Self {
             pos: Chess::default(),
@@ -319,11 +327,15 @@ impl ChessSimulator {
         }
 
         let next_idx = self.playlist[self.playlist_cursor];
+        let next_game = &self.games[next_idx];
         println!(
-            "Nueva partida [{}/{}]: '{}' (Tablero: {:?}, Piezas: {:?})",
+            "Nueva partida [{}/{}]: '{} vs {}' - {} ({}) (Tablero: {:?}, Piezas: {:?})",
             self.playlist_cursor + 1,
             self.playlist.len(),
-            self.games[next_idx].name,
+            next_game.white,
+            next_game.black,
+            next_game.event,
+            next_game.year,
             self.board_style,
             self.piece_style
         );
@@ -331,6 +343,18 @@ impl ChessSimulator {
         self.state = SimState::Idle {
             next_move_at: Instant::now() + Duration::from_millis(500),
         };
+    }
+
+    pub fn current_game(&self) -> &GameData {
+        &self.games[self.playlist[self.playlist_cursor]]
+    }
+
+    pub fn current_move_num(&self) -> usize {
+        (self.current_move_index / 2) + 1
+    }
+
+    pub fn total_moves(&self) -> usize {
+        (self.current_game().moves.len() + 1) / 2
     }
 }
 
@@ -342,7 +366,7 @@ mod tests {
     fn test_castling_animation() {
         let mut sim = ChessSimulator::new(260, 500, BoardStyle::Tournament, PieceStyle::Neo, false);
         // Forzar a la Opera Game (índice donde esté en la playlist)
-        let opera_idx = sim.games.iter().position(|g| g.name.contains("Opera Game")).unwrap();
+        let opera_idx = sim.games.iter().position(|g| g.event.contains("Opera Game")).unwrap();
         sim.playlist_cursor = sim.playlist.iter().position(|&idx| idx == opera_idx).unwrap();
 
         // 22 jugadas previas hasta O-O-O
