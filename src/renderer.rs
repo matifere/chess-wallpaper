@@ -4,63 +4,79 @@ use tiny_skia::{Color as SkColor, FilterQuality, Paint, PathBuilder, PixmapMut, 
 use crate::assets::AssetManager;
 use crate::chess_sim::{ChessSimulator, SimState, SinglePieceAnim};
 
+fn add_rounded_rect(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, r: f32) {
+    let r = r.min(w / 2.0).min(h / 2.0);
+    pb.move_to(x + r, y);
+    pb.line_to(x + w - r, y);
+    pb.quad_to(x + w, y, x + w, y + r);
+    pb.line_to(x + w, y + h - r);
+    pb.quad_to(x + w, y + h, x + w - r, y + h);
+    pb.line_to(x + r, y + h);
+    pb.quad_to(x, y + h, x, y + h - r);
+    pb.line_to(x, y + r);
+    pb.quad_to(x, y, x + r, y);
+    pb.close();
+}
+
 pub fn render_frame(
     canvas: &mut PixmapMut,
     assets: &AssetManager,
     sim: &ChessSimulator,
+    bg_color: SkColor,
+    desired_board_size: f32,
     now: Instant,
 ) {
     let width = canvas.width() as f32;
     let height = canvas.height() as f32;
 
-    // 1. Limpiar fondo con color oscuro elegante
-    canvas.fill(SkColor::from_rgba8(17, 17, 27, 255));
+    // 1. Rellenar toda la pantalla con el color de fondo armónico
+    canvas.fill(bg_color);
 
-    // 2. Calcular dimensiones del tablero
-    let max_board_dim = width.min(height) * 0.88;
-    let tile_size = (max_board_dim / 8.0).floor().max(16.0);
+    // 2. Calcular tamaño fijo del tablero (con fallback adaptativo si la ventana es menor)
+    let max_avail = (width * 0.92).min(height * 0.92);
+    let target_board_dim = desired_board_size.min(max_avail);
+    let tile_size = (target_board_dim / 8.0).floor().max(16.0);
     let board_total_w = tile_size * 8.0;
     let board_total_h = tile_size * 8.0;
 
     let board_x = ((width - board_total_w) / 2.0).floor();
     let board_y = ((height - board_total_h) / 2.0).floor();
 
-    // 3. Marco decorativo / Sombra exterior del tablero
-    let frame_pad = 14.0;
+    // 3. Marco flotante del tablero con bordes redondeados y sombra suave
+    let frame_pad = (tile_size * 0.35).floor().max(24.0);
     let frame_x = board_x - frame_pad;
     let frame_y = board_y - frame_pad;
     let frame_w = board_total_w + frame_pad * 2.0;
     let frame_h = board_total_h + frame_pad * 2.0;
+    let corner_radius = 20.0;
 
-    // Sombra suave difusa
+    // Sombra exterior amplia y difusa
     let mut shadow_paint = Paint::default();
-    shadow_paint.set_color(SkColor::from_rgba8(0, 0, 0, 95));
-    if let Some(r) = Rect::from_xywh(frame_x - 4.0, frame_y + 4.0, frame_w + 8.0, frame_h + 10.0) {
-        let mut pb = PathBuilder::new();
-        pb.push_rect(r);
-        if let Some(path) = pb.finish() {
-            canvas.fill_path(&path, &shadow_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
-        }
+    shadow_paint.set_color(SkColor::from_rgba8(0, 0, 0, 85));
+    let mut pb_shadow = PathBuilder::new();
+    add_rounded_rect(&mut pb_shadow, frame_x - 6.0, frame_y + 8.0, frame_w + 12.0, frame_h + 14.0, corner_radius + 4.0);
+    if let Some(path) = pb_shadow.finish() {
+        canvas.fill_path(&path, &shadow_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
     }
 
-    // Marco base del tablero
+    // Marco base sólido oscuro elegante (superficie flotante)
     let mut frame_paint = Paint::default();
-    frame_paint.set_color(SkColor::from_rgba8(26, 27, 38, 255));
-    if let Some(r) = Rect::from_xywh(frame_x, frame_y, frame_w, frame_h) {
-        canvas.fill_rect(r, &frame_paint, Transform::identity(), None);
+    frame_paint.set_color(SkColor::from_rgba8(28, 31, 46, 255));
+    let mut pb_frame = PathBuilder::new();
+    add_rounded_rect(&mut pb_frame, frame_x, frame_y, frame_w, frame_h, corner_radius);
+    if let Some(path) = pb_frame.finish() {
+        canvas.fill_path(&path, &frame_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
     }
 
-    // Borde fino interior
+    // Borde fino sutil del marco
     let mut border_paint = Paint::default();
-    border_paint.set_color(SkColor::from_rgba8(45, 48, 68, 200));
+    border_paint.set_color(SkColor::from_rgba8(60, 68, 98, 160));
     let mut stroke = tiny_skia::Stroke::default();
     stroke.width = 1.5;
-    if let Some(r) = Rect::from_xywh(frame_x, frame_y, frame_w, frame_h) {
-        let mut pb = PathBuilder::new();
-        pb.push_rect(r);
-        if let Some(path) = pb.finish() {
-            canvas.stroke_path(&path, &border_paint, &stroke, Transform::identity(), None);
-        }
+    let mut pb_border = PathBuilder::new();
+    add_rounded_rect(&mut pb_border, frame_x, frame_y, frame_w, frame_h, corner_radius);
+    if let Some(path) = pb_border.finish() {
+        canvas.stroke_path(&path, &border_paint, &stroke, Transform::identity(), None);
     }
 
     // 4. Dibujar las 64 baldosas con filtrado Bicúbico
@@ -107,7 +123,7 @@ pub fn render_frame(
         }
     }
 
-    // 6. Dibujar piezas estáticas (excluyendo casillas de origen/destino de piezas que se animan)
+    // 6. Dibujar piezas estáticas
     let board = sim.pos.board();
     for sq in Square::ALL {
         let file_idx = sq.file() as u8;
@@ -115,17 +131,14 @@ pub fn render_frame(
         let coords = (file_idx, rank_idx);
 
         if let Some(anim) = animating_move {
-            // Excluir casillas del movimiento primario (ej. Rey)
             if coords == anim.primary.from || coords == anim.primary.to {
                 continue;
             }
-            // Excluir casillas del movimiento secundario (ej. Torre en enroque)
             if let Some(ref sec) = anim.secondary {
                 if coords == sec.from || coords == sec.to {
                     continue;
                 }
             }
-            // Excluir casilla de pieza capturada
             if let Some((_, cap_coords)) = anim.captured {
                 if coords == cap_coords {
                     continue;
@@ -152,7 +165,7 @@ pub fn render_frame(
         }
     }
 
-    // 7. Si hay una pieza capturada, dibujarla desvaneciéndose en su casilla
+    // 7. Pieza capturada desvaneciéndose en su casilla
     if let Some(anim) = animating_move {
         if let Some((captured_piece, (cap_f, cap_r))) = anim.captured {
             let progress = anim.progress(now);
@@ -177,14 +190,10 @@ pub fn render_frame(
         }
     }
 
-    // 8. Dibujar las piezas en animación (Rey y Torre si es enroque)
+    // 8. Dibujar las piezas en animación (Rey y Torre en enroque)
     if let Some(anim) = animating_move {
         let progress = anim.progress(now);
-
-        // Pieza primaria (Rey o pieza estándar)
         draw_animated_piece(canvas, assets, sim, &anim.primary, progress, board_x, board_y, tile_size);
-
-        // Pieza secundaria (Torre en el enroque)
         if let Some(ref sec) = anim.secondary {
             draw_animated_piece(canvas, assets, sim, sec, progress, board_x, board_y, tile_size);
         }

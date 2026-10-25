@@ -38,7 +38,7 @@ use smithay_client_toolkit::reexports::calloop::{
     EventLoop,
 };
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
-use tiny_skia::PixmapMut;
+use tiny_skia::{Color, PixmapMut};
 use wayland_client::{
     globals::registry_queue_init,
     protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
@@ -81,6 +81,8 @@ pub struct AppState {
 
     assets: AssetManager,
     sim: ChessSimulator,
+    bg_color: Color,
+    board_size: f32,
     qh: QueueHandle<AppState>,
 }
 
@@ -109,7 +111,14 @@ impl AppState {
 
         // Renderizar frame con tiny-skia
         if let Some(mut pixmap) = PixmapMut::from_bytes(canvas, width, height) {
-            renderer::render_frame(&mut pixmap, &self.assets, &self.sim, Instant::now());
+            renderer::render_frame(
+                &mut pixmap,
+                &self.assets,
+                &self.sim,
+                self.bg_color,
+                self.board_size,
+                Instant::now(),
+            );
         }
 
         if let Some(ref surface_mode) = self.surface_mode {
@@ -287,6 +296,24 @@ impl ProvidesRegistryState for AppState {
 
 smithay_client_toolkit::delegate_dispatch2!(AppState);
 
+fn parse_hex_color(s: &str) -> Option<Color> {
+    let s = s.trim_start_matches('#');
+    if s.len() == 6 {
+        let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+        Some(Color::from_rgba8(r, g, b, 255))
+    } else if s.len() == 8 {
+        let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+        let a = u8::from_str_radix(&s[6..8], 16).ok()?;
+        Some(Color::from_rgba8(r, g, b, a))
+    } else {
+        None
+    }
+}
+
 fn main() {
     let mut args = pico_args::Arguments::from_env();
 
@@ -294,15 +321,26 @@ fn main() {
     let selected_theme = theme_str
         .as_deref()
         .and_then(BoardTheme::from_str_opt)
-        .unwrap_or(BoardTheme::Amber); // Por defecto: Ámbar / Miel cálido
+        .unwrap_or(BoardTheme::Blue); // Por defecto: Blue Glaciar (elegido por el usuario)
 
     let rotate_theme = args.contains("--rotate");
+
+    let bg_str: Option<String> = args.opt_value_from_str(["--bg", "--background"]).unwrap_or(None);
+    let bg_color = bg_str
+        .as_deref()
+        .and_then(parse_hex_color)
+        .unwrap_or_else(|| Color::from_rgba8(20, 22, 34, 255)); // #141622 (fondo noche azul sobrio)
+
+    let board_size: f32 = args
+        .opt_value_from_str(["-b", "--board-size"])
+        .unwrap_or(None)
+        .unwrap_or(640.0); // Tamaño óptimo de 640px para 1080p (80px por casilla)
 
     if let Ok(Some(path)) = args.opt_value_from_str::<_, String>("--snapshot") {
         let assets = AssetManager::load_embedded();
         let sim = ChessSimulator::new(260, 500, selected_theme, false);
-        let mut pixmap = tiny_skia::Pixmap::new(800, 800).unwrap();
-        renderer::render_frame(&mut pixmap.as_mut(), &assets, &sim, Instant::now());
+        let mut pixmap = tiny_skia::Pixmap::new(1920, 1080).unwrap();
+        renderer::render_frame(&mut pixmap.as_mut(), &assets, &sim, bg_color, board_size, Instant::now());
         pixmap.save_png(&path).expect("Failed to save snapshot");
         println!("Snapshot guardado en {path}");
         return;
@@ -322,7 +360,8 @@ fn main() {
 
     println!("Iniciando Chess Wallpaper (Rust)");
     println!("Modo: {}", if is_window_mode { "Ventana de prueba (-w)" } else { "Fondo de escritorio Layer-Shell" });
-    println!("Tablero: {:?} (Fijo: {})", selected_theme, !rotate_theme);
+    println!("Tablero: {:?} (Fijo: {}) | Tamaño: {board_size}px", selected_theme, !rotate_theme);
+    println!("Color de fondo: rgba({}, {}, {}, {})", bg_color.red(), bg_color.green(), bg_color.blue(), bg_color.alpha());
     println!("Velocidad de salto: {move_speed} ms | Pausa entre jugadas: {move_delay} ms");
 
     let conn = Connection::connect_to_env().expect("No se pudo conectar al compositor Wayland");
@@ -381,6 +420,8 @@ fn main() {
         exit: false,
         assets,
         sim,
+        bg_color,
+        board_size,
         qh: qh.clone(),
     };
 
