@@ -1,5 +1,5 @@
 use std::time::{Duration, Instant};
-use rand::seq::{IndexedRandom, SliceRandom};
+use rand::seq::SliceRandom;
 use shakmaty::san::San;
 use shakmaty::{Chess, Move, Piece, Position, Role};
 use crate::assets::{BoardStyle, PieceStyle};
@@ -122,7 +122,7 @@ impl ChessSimulator {
             rotate_theme,
             move_duration: Duration::from_millis(move_ms),
             pause_between_moves: Duration::from_millis(delay_ms),
-            pause_after_game: Duration::from_millis(2200),
+            pause_after_game: Duration::from_millis(3600),
             games,
             playlist,
             playlist_cursor: 0,
@@ -134,9 +134,17 @@ impl ChessSimulator {
         match self.state {
             SimState::Animating(ref anim) => {
                 if anim.progress(now) >= 1.0 {
-                    self.state = SimState::Idle {
-                        next_move_at: now + self.pause_between_moves,
-                    };
+                    let current_game_idx = self.playlist[self.playlist_cursor];
+                    let current_game = &self.games[current_game_idx];
+                    if self.pos.is_game_over() || self.current_move_index >= current_game.moves.len() {
+                        self.state = SimState::GameOver {
+                            restart_at: now + self.pause_after_game,
+                        };
+                    } else {
+                        self.state = SimState::Idle {
+                            next_move_at: now + self.pause_between_moves,
+                        };
+                    }
                     return true;
                 }
                 true
@@ -159,50 +167,43 @@ impl ChessSimulator {
     }
 
     pub fn perform_next_move(&mut self, now: Instant) {
-        if self.pos.is_game_over() {
-            println!("¡Fin de la partida! Próxima partida en {:.1}s...", self.pause_after_game.as_secs_f32());
+        let current_game_idx = self.playlist[self.playlist_cursor];
+        let current_game = &self.games[current_game_idx];
+
+        if self.pos.is_game_over() || self.current_move_index >= current_game.moves.len() {
+            println!(
+                "¡Fin de partida: '{} vs {}' - {} ({})! Resultado: {} ({}). Próxima partida en {:.1}s...",
+                current_game.white,
+                current_game.black,
+                current_game.event,
+                current_game.year,
+                current_game.result,
+                current_game.termination,
+                self.pause_after_game.as_secs_f32()
+            );
             self.state = SimState::GameOver {
                 restart_at: now + self.pause_after_game,
             };
             return;
         }
 
-        let current_game_idx = self.playlist[self.playlist_cursor];
-        let current_game = &self.games[current_game_idx];
-
-        let next_m = if self.current_move_index < current_game.moves.len() {
-            let san_str = current_game.moves[self.current_move_index];
-            if let Ok(san) = san_str.parse::<San>() {
-                if let Ok(m) = san.to_move(&self.pos) {
-                    self.current_move_index += 1;
-                    Some(m)
-                } else {
-                    None
-                }
-            } else {
-                None
+        let san_str = current_game.moves[self.current_move_index];
+        let chosen_move = match san_str.parse::<San>().ok().and_then(|s| s.to_move(&self.pos).ok()) {
+            Some(m) => {
+                self.current_move_index += 1;
+                m
             }
-        } else {
-            None
-        };
-
-        let chosen_move = match next_m {
-            Some(m) => m,
             None => {
-                let legal = self.pos.legal_moves();
-                if legal.is_empty() {
-                    self.state = SimState::GameOver {
-                        restart_at: now + self.pause_after_game,
-                    };
-                    return;
-                }
-                let mut rng = rand::rng();
-                let captures: Vec<Move> = legal.iter().filter(|m| m.is_capture()).cloned().collect();
-                if !captures.is_empty() && rand::random::<f32>() < 0.65 {
-                    *captures.choose(&mut rng).unwrap()
-                } else {
-                    *legal.choose(&mut rng).unwrap()
-                }
+                eprintln!(
+                    "Error al aplicar jugada {} ('{}') en '{}'",
+                    self.current_move_index + 1,
+                    san_str,
+                    current_game.event
+                );
+                self.state = SimState::GameOver {
+                    restart_at: now + self.pause_after_game,
+                };
+                return;
             }
         };
 

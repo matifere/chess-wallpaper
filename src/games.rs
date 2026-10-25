@@ -4,6 +4,8 @@ pub struct GameData {
     pub black: &'static str,
     pub event: &'static str,
     pub year: u16,
+    pub result: &'static str,
+    pub termination: &'static str,
     pub moves: &'static [&'static str],
 }
 
@@ -15,6 +17,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Duque de Brunswick",
             event: "The Opera Game",
             year: 1858,
+            result: "1-0",
+            termination: "Jaque mate",
             moves: &[
                 "e4", "e5", "Nf3", "d6", "d4", "Bg4", "dxe5", "Bxf3", "Qxf3", "dxe5",
                 "Bc4", "Nf6", "Qb3", "Qe7", "Nc3", "c6", "Bg5", "b5", "Nxb5", "cxb5",
@@ -28,6 +32,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Lionel Kieseritzky",
             event: "The Immortal Game",
             year: 1851,
+            result: "1-0",
+            termination: "Jaque mate",
             moves: &[
                 "e4", "e5", "f4", "exf4", "Bc4", "Qh4+", "Kf1", "b5", "Bxb5", "Nf6",
                 "Nf3", "Qh6", "d3", "Nh5", "Nh4", "Qg5", "Nf5", "c6", "g4", "Nf6",
@@ -42,6 +48,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Jean Dufresne",
             event: "The Evergreen Game",
             year: 1852,
+            result: "1-0",
+            termination: "Jaque mate",
             moves: &[
                 "e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "b4", "Bxb4", "c3", "Ba5",
                 "d4", "exd4", "O-O", "d3", "Qb3", "Qf6", "e5", "Qg6", "Re1", "Nge7",
@@ -56,6 +64,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Savielly Tartakower",
             event: "Double Check Mate",
             year: 1910,
+            result: "1-0",
+            termination: "Jaque mate",
             moves: &[
                 "e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Nf6", "Qd3", "e5",
                 "dxe5", "Qa5+", "Bd2", "Qxe5", "O-O-O", "Nxe4", "Qd8+", "Kxd8", "Bg5+", "Kc7", "Bd8#"
@@ -67,6 +77,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Bobby Fischer",
             event: "The Game of the Century",
             year: 1956,
+            result: "0-1",
+            termination: "Jaque mate",
             moves: &[
                 "Nf3", "Nf6", "c4", "g6", "Nc3", "Bg7", "d4", "O-O", "Bf4", "d5",
                 "Qb3", "dxc4", "Qxc4", "c6", "e4", "Nbd7", "Rd1", "Nb6", "Qc5", "Bg4",
@@ -85,6 +97,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Sir George Thomas",
             event: "The King Hunt",
             year: 1912,
+            result: "1-0",
+            termination: "Jaque mate",
             moves: &[
                 "d4", "f5", "Nf3", "e6", "Nc3", "Nf6", "Bg5", "Be7", "Bxf6", "Bxf6",
                 "e4", "fxe4", "Nxe4", "b6", "Ne5", "O-O", "Bd3", "Bb7", "Qh5", "Qe7",
@@ -98,6 +112,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Akiba Rubinstein",
             event: "Rubinstein's Immortal",
             year: 1907,
+            result: "0-1",
+            termination: "Abandono",
             moves: &[
                 "d4", "d5", "Nf3", "e6", "e3", "c5", "c4", "Nc6", "Nc3", "Nf6",
                 "dxc5", "Bxc5", "a3", "a6", "b4", "Bd6", "Bb2", "O-O", "Qd2", "Qe7",
@@ -112,6 +128,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Bent Larsen",
             event: "Tal's Attack",
             year: 1965,
+            result: "1-0",
+            termination: "Abandono",
             moves: &[
                 "e4", "c5", "Nf3", "Nc6", "d4", "cxd4", "Nxd4", "e6", "Nc3", "d6",
                 "Be3", "Nf6", "f4", "Be7", "Qf3", "O-O", "O-O-O", "Qc7", "Ndb5", "Qb8",
@@ -127,6 +145,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Sipke Ernst",
             event: "Young Magnus",
             year: 2004,
+            result: "1-0",
+            termination: "Abandono",
             moves: &[
                 "e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5", "Ng3", "Bg6",
                 "h4", "h6", "Nf3", "Nd7", "h5", "Bh7", "Bd3", "Bxd3", "Qxd3", "e6",
@@ -142,6 +162,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Garry Kasparov",
             event: "Match Game 6",
             year: 1997,
+            result: "1-0",
+            termination: "Abandono",
             moves: &[
                 "e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Nd7", "Ng5", "Ngf6",
                 "Bd3", "e6", "N1f3", "h6", "Nxe6", "Qe7", "O-O", "fxe6", "Bg6+", "Kd8",
@@ -155,6 +177,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Johann Bauer",
             event: "Double Bishop Sacrifice",
             year: 1889,
+            result: "1-0",
+            termination: "Abandono",
             moves: &[
                 "f4", "d5", "e3", "Nf6", "b3", "e6", "Bb2", "Be7", "Bd3", "b6",
                 "Nf3", "Bb7", "Nc3", "Nbd7", "O-O", "O-O", "Ne2", "c5", "Ng3", "Qc7",
@@ -170,6 +194,8 @@ pub fn get_master_games() -> Vec<GameData> {
             black: "Jan Timman",
             event: "The King March",
             year: 1991,
+            result: "1-0",
+            termination: "Abandono",
             moves: &[
                 "e4", "Nf6", "e5", "Nd5", "d4", "d6", "Nf3", "g6", "Bc4", "Nb6",
                 "Bb3", "Bg7", "Qe2", "Nc6", "O-O", "O-O", "h3", "a5", "a4", "dxe5",
@@ -181,4 +207,23 @@ pub fn get_master_games() -> Vec<GameData> {
             ],
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shakmaty::{Chess, Position};
+    use shakmaty::san::San;
+
+    #[test]
+    fn test_all_games_legal_moves() {
+        for (i, g) in get_master_games().iter().enumerate() {
+            let mut pos = Chess::default();
+            for (m_idx, &m_str) in g.moves.iter().enumerate() {
+                let san: San = m_str.parse().expect(&format!("Game {} move {} failed to parse: {}", i, m_idx, m_str));
+                let m = san.to_move(&pos).expect(&format!("Game {} ('{}') move {} ('{}') is illegal!", i, g.event, m_idx + 1, m_str));
+                pos.play_unchecked(m);
+            }
+        }
+    }
 }

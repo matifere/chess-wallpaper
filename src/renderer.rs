@@ -359,6 +359,11 @@ pub fn render_frame(
         let game = sim.current_game();
         let current_turn = sim.pos.turn();
 
+        let (is_black_turn, is_white_turn) = match sim.state {
+            SimState::GameOver { .. } => (false, false),
+            _ => (current_turn == Color::Black, current_turn == Color::White),
+        };
+
         // Badge superior: Jugador de Negras
         let top_meta = format!("{} ({})", game.event, game.year);
         draw_player_badge(
@@ -372,12 +377,12 @@ pub fn render_frame(
             top_badge_y,
             badge_w,
             badge_h,
-            current_turn == Color::Black,
+            is_black_turn,
         );
 
         // Badge inferior: Jugador de Blancas
         let bot_meta = if matches!(sim.state, SimState::GameOver { .. }) {
-            format!("Fin de partida • Jugada {}/{}", sim.current_move_num(), sim.total_moves())
+            format!("Fin: {} ({})", game.result, game.termination)
         } else {
             format!("Jugada {}/{}", sim.current_move_num(), sim.total_moves())
         };
@@ -392,7 +397,7 @@ pub fn render_frame(
             bot_badge_y,
             badge_w,
             badge_h,
-            current_turn == Color::White,
+            is_white_turn,
         );
     }
 }
