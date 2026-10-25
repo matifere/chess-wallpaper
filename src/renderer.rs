@@ -246,25 +246,7 @@ pub fn render_frame(
     let board_xform = Transform::from_scale(scale, scale).post_translate(board_x, board_y);
     canvas.draw_pixmap(0, 0, board_pixmap.as_ref(), &board_paint, board_xform, None);
 
-    // 4.1. Resaltado de última jugada al estilo Chess.com (casillas from y to en amarillo suave translúcido)
-    if let Some((from_sq, to_sq)) = sim.last_move {
-        let mut hl_paint = Paint::default();
-        hl_paint.set_color(SkColor::from_rgba8(245, 246, 110, 105)); // Amarillo cálido Chess.com
-
-        for (f, r) in [from_sq, to_sq] {
-            let sx = board_x + (f as f32) * tile_size;
-            let sy = board_y + (7.0 - r as f32) * tile_size;
-            if let Some(rect) = Rect::from_xywh(sx, sy, tile_size, tile_size) {
-                let mut pb = PathBuilder::new();
-                pb.push_rect(rect);
-                if let Some(path) = pb.finish() {
-                    canvas.fill_path(&path, &hl_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
-                }
-            }
-        }
-    }
-
-    // 4.2. Resaltado de Rey en Jaque (Alerta carmesí Chess.com)
+    // 4.1. Resaltado de Rey en Jaque (Alerta carmesí Chess.com)
     if sim.pos.is_check() {
         let in_check_color = sim.pos.turn();
         if let Some(king_sq) = sim.pos.board().king_of(in_check_color) {
@@ -374,6 +356,7 @@ pub fn render_frame(
                 file_idx as f32,
                 rank_idx as f32,
                 0.0,
+                0.0,
                 board_x,
                 board_y,
                 tile_size,
@@ -384,27 +367,62 @@ pub fn render_frame(
         }
     }
 
-    // 8. Pieza capturada desvaneciéndose en su casilla con disolución e impacto
+    // 8. Pieza capturada con impacto físico, retroceso (knockback), giro y desvanecimiento
     if let Some(anim) = animating_move {
         if let Some((captured_piece, (cap_f, cap_r))) = anim.captured {
             let progress = anim.progress(now);
-            let opacity = (1.0 - progress).clamp(0.0, 1.0);
-            let scale_cap = (1.0 - progress * 0.22).clamp(0.0, 1.0);
-            draw_piece_at_square(
-                canvas,
-                assets,
-                sim,
-                captured_piece,
-                cap_f as f32,
-                cap_r as f32,
-                0.0,
-                board_x,
-                board_y,
-                tile_size,
-                scale_cap,
-                scale_cap,
-                opacity,
-            );
+            let dx = (anim.primary.to.0 as f32) - (anim.primary.from.0 as f32);
+            let dy = (anim.primary.to.1 as f32) - (anim.primary.from.1 as f32);
+            let dist = (dx * dx + dy * dy).sqrt().max(0.001);
+            let nx = dx / dist;
+            let ny = dy / dist;
+
+            if progress < 0.74 {
+                // Antes del impacto: la pieza sigue firme en su casilla
+                draw_piece_at_square(
+                    canvas,
+                    assets,
+                    sim,
+                    captured_piece,
+                    cap_f as f32,
+                    cap_r as f32,
+                    0.0,
+                    0.0,
+                    board_x,
+                    board_y,
+                    tile_size,
+                    1.0,
+                    1.0,
+                    1.0,
+                );
+            } else {
+                // Momento del impacto: retroceso físico en la dirección del golpe, giro y desvanecimiento
+                let u = (progress - 0.74) / 0.26;
+                let knock_dist = u * 0.42;
+                let kf = (cap_f as f32) + nx * knock_dist;
+                let kr = (cap_r as f32) + ny * knock_dist;
+
+                let tumble_tilt = nx * u * 24.0;
+                let scale = (1.0 - u * 0.85).max(0.0);
+                let opacity = (1.0 - u).clamp(0.0, 1.0);
+
+                draw_piece_at_square(
+                    canvas,
+                    assets,
+                    sim,
+                    captured_piece,
+                    kf,
+                    kr,
+                    0.0,
+                    tumble_tilt,
+                    board_x,
+                    board_y,
+                    tile_size,
+                    scale,
+                    scale,
+                    opacity,
+                );
+            }
         }
     }
 
@@ -483,14 +501,14 @@ fn draw_ground_shadow(
     tile_size: f32,
 ) {
     let (cur_f, cur_r) = anim.current_pos(progress);
-    let jump = anim.jump_height(progress);
+    let jump_norm = (anim.jump_height(progress) / 0.45).clamp(0.0, 1.0);
 
     let sx = board_x + cur_f * tile_size + tile_size * 0.5;
     let sy = board_y + (7.0 - cur_r) * tile_size + tile_size * 0.85;
 
-    let shadow_w = (tile_size * 0.50) * (1.0 - jump * 0.18);
-    let shadow_h = (tile_size * 0.18) * (1.0 - jump * 0.18);
-    let shadow_alpha = (85.0 * (1.0 - jump * 0.40)) as u8;
+    let shadow_w = (tile_size * 0.50) * (1.0 - jump_norm * 0.35);
+    let shadow_h = (tile_size * 0.18) * (1.0 - jump_norm * 0.35);
+    let shadow_alpha = (85.0 * (1.0 - jump_norm * 0.55)) as u8;
 
     let mut oval_paint = Paint::default();
     oval_paint.set_color_rgba8(0, 0, 0, shadow_alpha);
@@ -515,9 +533,10 @@ fn draw_animated_piece(
     tile_size: f32,
 ) {
     let (cur_f, cur_r) = anim.current_pos(progress);
-    let jump = anim.jump_height(progress);
-    let arc_y = jump * (tile_size * 0.20);
-    let (scale_x, scale_y) = anim.dynamic_scale(progress);
+    let jump_h = anim.jump_height(progress);
+    let arc_y = jump_h * tile_size;
+    let (scale_x, scale_y) = anim.scale(progress);
+    let tilt = anim.tilt_degrees(progress);
 
     draw_piece_at_square(
         canvas,
@@ -527,6 +546,7 @@ fn draw_animated_piece(
         cur_f,
         cur_r,
         arc_y,
+        tilt,
         board_x,
         board_y,
         tile_size,
@@ -544,6 +564,7 @@ fn draw_piece_at_square(
     file_f: f32,
     rank_f: f32,
     arc_offset_y: f32,
+    tilt_deg: f32,
     board_x: f32,
     board_y: f32,
     tile_size: f32,
@@ -563,7 +584,12 @@ fn draw_piece_at_square(
     let tx = board_x + file_f * tile_size + (tile_size - pw) / 2.0;
     let ty = board_y + (7.0 - rank_f) * tile_size + (tile_size - ph) / 2.0 - arc_offset_y;
 
-    let xform = Transform::from_scale(scale_x, scale_y).post_translate(tx, ty);
+    let mut xform = Transform::from_scale(scale_x, scale_y).post_translate(tx, ty);
+    if tilt_deg.abs() > 0.01 {
+        let pivot_x = tx + pw * 0.5;
+        let pivot_y = ty + ph * 0.85; // Base inferior donde apoya la pieza
+        xform = xform.post_rotate_at(tilt_deg, pivot_x, pivot_y);
+    }
 
     let mut paint = PixmapPaint::default();
     paint.quality = FilterQuality::Bicubic;
