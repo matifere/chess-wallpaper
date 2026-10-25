@@ -279,6 +279,17 @@ smithay_client_toolkit::delegate_dispatch2!(AppState);
 
 fn main() {
     let mut args = pico_args::Arguments::from_env();
+
+    if let Ok(Some(path)) = args.opt_value_from_str::<_, String>("--snapshot") {
+        let assets = AssetManager::load_embedded();
+        let sim = ChessSimulator::new();
+        let mut pixmap = tiny_skia::Pixmap::new(800, 800).unwrap();
+        renderer::render_frame(&mut pixmap.as_mut(), &assets, &sim, Instant::now());
+        pixmap.save_png(&path).expect("Failed to save snapshot");
+        println!("Snapshot guardado en {path}");
+        return;
+    }
+
     let is_window_mode = args.contains(["-w", "--window"]);
 
     println!("Iniciando Chess Wallpaper (Rust)");
