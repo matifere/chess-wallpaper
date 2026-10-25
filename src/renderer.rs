@@ -1,6 +1,9 @@
 use std::time::Instant;
 use shakmaty::{Color, Piece, Position, Role, Square};
-use tiny_skia::{Color as SkColor, FilterQuality, Paint, PathBuilder, PixmapMut, PixmapPaint, Rect, Transform};
+use tiny_skia::{
+    Color as SkColor, FilterQuality, GradientStop, Paint, PathBuilder, PixmapMut, PixmapPaint, Point,
+    RadialGradient, Rect, SpreadMode, Transform,
+};
 
 use crate::assets::AssetManager;
 use crate::chess_sim::{ChessSimulator, SimState, SinglePieceAnim};
@@ -243,6 +246,74 @@ pub fn render_frame(
     let board_xform = Transform::from_scale(scale, scale).post_translate(board_x, board_y);
     canvas.draw_pixmap(0, 0, board_pixmap.as_ref(), &board_paint, board_xform, None);
 
+    // 4.1. Resaltado de última jugada al estilo Chess.com (casillas from y to en amarillo suave translúcido)
+    if let Some((from_sq, to_sq)) = sim.last_move {
+        let mut hl_paint = Paint::default();
+        hl_paint.set_color(SkColor::from_rgba8(245, 246, 110, 105)); // Amarillo cálido Chess.com
+
+        for (f, r) in [from_sq, to_sq] {
+            let sx = board_x + (f as f32) * tile_size;
+            let sy = board_y + (7.0 - r as f32) * tile_size;
+            if let Some(rect) = Rect::from_xywh(sx, sy, tile_size, tile_size) {
+                let mut pb = PathBuilder::new();
+                pb.push_rect(rect);
+                if let Some(path) = pb.finish() {
+                    canvas.fill_path(&path, &hl_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                }
+            }
+        }
+    }
+
+    // 4.2. Resaltado de Rey en Jaque (Alerta carmesí Chess.com)
+    if sim.pos.is_check() {
+        let in_check_color = sim.pos.turn();
+        if let Some(king_sq) = sim.pos.board().king_of(in_check_color) {
+            let kf = king_sq.file() as u8 as f32;
+            let kr = king_sq.rank() as u8 as f32;
+            let sx = board_x + kf * tile_size;
+            let sy = board_y + (7.0 - kr) * tile_size;
+
+            let cx = sx + tile_size * 0.5;
+            let cy = sy + tile_size * 0.5;
+
+            // Degradado radial cónico carmesí al estilo Chess.com
+            let stops = vec![
+                GradientStop::new(0.0, SkColor::from_rgba8(235, 55, 55, 175)),
+                GradientStop::new(0.55, SkColor::from_rgba8(235, 55, 55, 120)),
+                GradientStop::new(1.0, SkColor::from_rgba8(235, 55, 55, 0)),
+            ];
+            if let Some(shader) = RadialGradient::new(
+                Point::from_xy(cx, cy),
+                0.0,
+                Point::from_xy(cx, cy),
+                tile_size * 0.72,
+                stops,
+                SpreadMode::Pad,
+                Transform::identity(),
+            ) {
+                let mut check_paint = Paint::default();
+                check_paint.shader = shader;
+                if let Some(rect) = Rect::from_xywh(sx, sy, tile_size, tile_size) {
+                    let mut pb = PathBuilder::new();
+                    pb.push_rect(rect);
+                    if let Some(path) = pb.finish() {
+                        canvas.fill_path(&path, &check_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                    }
+                }
+            } else {
+                let mut check_paint = Paint::default();
+                check_paint.set_color(SkColor::from_rgba8(235, 55, 55, 130));
+                if let Some(rect) = Rect::from_xywh(sx, sy, tile_size, tile_size) {
+                    let mut pb = PathBuilder::new();
+                    pb.push_rect(rect);
+                    if let Some(path) = pb.finish() {
+                        canvas.fill_path(&path, &check_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+                    }
+                }
+            }
+        }
+    }
+
     // Borde fino interior alrededor de las casillas
     let mut inner_border_paint = Paint::default();
     inner_border_paint.set_color(SkColor::from_rgba8(0, 0, 0, 80));
@@ -313,11 +384,12 @@ pub fn render_frame(
         }
     }
 
-    // 8. Pieza capturada desvaneciéndose en su casilla
+    // 8. Pieza capturada desvaneciéndose en su casilla con disolución e impacto
     if let Some(anim) = animating_move {
         if let Some((captured_piece, (cap_f, cap_r))) = anim.captured {
             let progress = anim.progress(now);
             let opacity = (1.0 - progress).clamp(0.0, 1.0);
+            let scale_cap = (1.0 - progress * 0.22).clamp(0.0, 1.0);
             draw_piece_at_square(
                 canvas,
                 assets,
@@ -329,8 +401,8 @@ pub fn render_frame(
                 board_x,
                 board_y,
                 tile_size,
-                1.0,
-                1.0,
+                scale_cap,
+                scale_cap,
                 opacity,
             );
         }
@@ -416,17 +488,19 @@ fn draw_ground_shadow(
     let sx = board_x + cur_f * tile_size + tile_size * 0.5;
     let sy = board_y + (7.0 - cur_r) * tile_size + tile_size * 0.85;
 
-    let shadow_w = (tile_size * 0.52) * (1.0 - jump * 0.22);
-    let shadow_h = (tile_size * 0.20) * (1.0 - jump * 0.22);
-    let shadow_alpha = (90.0 * (1.0 - jump * 0.45)) as u8;
+    let shadow_w = (tile_size * 0.50) * (1.0 - jump * 0.18);
+    let shadow_h = (tile_size * 0.18) * (1.0 - jump * 0.18);
+    let shadow_alpha = (85.0 * (1.0 - jump * 0.40)) as u8;
 
     let mut oval_paint = Paint::default();
     oval_paint.set_color_rgba8(0, 0, 0, shadow_alpha);
 
     let mut pb = PathBuilder::new();
-    pb.push_oval(Rect::from_xywh(sx - shadow_w / 2.0, sy - shadow_h / 2.0, shadow_w, shadow_h).unwrap());
-    if let Some(path) = pb.finish() {
-        canvas.fill_path(&path, &oval_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    if let Some(r) = Rect::from_xywh(sx - shadow_w / 2.0, sy - shadow_h / 2.0, shadow_w, shadow_h) {
+        pb.push_oval(r);
+        if let Some(path) = pb.finish() {
+            canvas.fill_path(&path, &oval_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        }
     }
 }
 
@@ -442,8 +516,8 @@ fn draw_animated_piece(
 ) {
     let (cur_f, cur_r) = anim.current_pos(progress);
     let jump = anim.jump_height(progress);
-    let arc_y = jump * (tile_size * 0.35);
-    let (squish_x, squish_y) = anim.jelly_scale(progress);
+    let arc_y = jump * (tile_size * 0.20);
+    let (scale_x, scale_y) = anim.dynamic_scale(progress);
 
     draw_piece_at_square(
         canvas,
@@ -456,8 +530,8 @@ fn draw_animated_piece(
         board_x,
         board_y,
         tile_size,
-        squish_x,
-        squish_y,
+        scale_x,
+        scale_y,
         1.0,
     );
 }

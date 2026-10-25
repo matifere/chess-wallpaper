@@ -14,7 +14,10 @@ pub struct SinglePieceAnim {
 
 impl SinglePieceAnim {
     pub fn current_pos(&self, progress: f32) -> (f32, f32) {
-        let t = progress * progress * (3.0 - 2.0 * progress);
+        // Dynamic cubic ease-out: rápida aceleración inicial y frenado suave y elegante
+        let p = progress.clamp(0.0, 1.0);
+        let inv = 1.0 - p;
+        let t = 1.0 - inv * inv * inv;
         let fx = self.from.0 as f32;
         let fy = self.from.1 as f32;
         let tx = self.to.0 as f32;
@@ -23,23 +26,23 @@ impl SinglePieceAnim {
     }
 
     pub fn jump_height(&self, progress: f32) -> f32 {
-        (progress * std::f32::consts::PI).sin()
+        let p = progress.clamp(0.0, 1.0);
+        (p * std::f32::consts::PI).sin()
     }
 
-    pub fn jelly_scale(&self, progress: f32) -> (f32, f32) {
-        let p = progress;
-        if p < 0.25 {
-            let t = p / 0.25;
-            let stretch = (t * std::f32::consts::PI).sin() * 0.08;
-            (1.0 - stretch * 0.5, 1.0 + stretch)
-        } else if p < 0.70 {
-            (1.0, 1.0)
+    pub fn dynamic_scale(&self, progress: f32) -> (f32, f32) {
+        let p = progress.clamp(0.0, 1.0);
+        let jump = (p * std::f32::consts::PI).sin();
+        // Elevación 2.5D: hasta +5% de escala en el cenit del movimiento
+        let lift = 1.0 + 0.05 * jump;
+
+        // Amortiguación táctil de aterrizaje en el 16% final (damped spring settle)
+        if p >= 0.84 {
+            let s = (p - 0.84) / 0.16;
+            let settle = (-5.5 * s).exp() * (s * std::f32::consts::PI * 2.0).sin() * 0.035;
+            (lift + settle, (lift - settle).max(0.92))
         } else {
-            let t = (p - 0.70) / 0.30;
-            let decay = (-5.0 * t).exp();
-            let wave = (t * std::f32::consts::PI * 3.0).sin();
-            let wobble = decay * wave * 0.12;
-            (1.0 + wobble, (1.0 - wobble * 0.8).max(0.75))
+            (lift, lift)
         }
     }
 }
@@ -74,6 +77,7 @@ pub enum SimState {
 pub struct ChessSimulator {
     pub pos: Chess,
     pub state: SimState,
+    pub last_move: Option<((u8, u8), (u8, u8))>,
     pub board_style: BoardStyle,
     pub piece_style: PieceStyle,
     pub rotate_theme: bool,
@@ -117,6 +121,7 @@ impl ChessSimulator {
             state: SimState::Idle {
                 next_move_at: Instant::now() + Duration::from_millis(400),
             },
+            last_move: None,
             board_style,
             piece_style,
             rotate_theme,
@@ -302,6 +307,25 @@ impl ChessSimulator {
             }
         };
 
+        let (from_sq, to_sq) = match chosen_move {
+            Move::Castle { king, rook } => {
+                let rank = king.rank() as u8;
+                let is_kingside = rook.file() > king.file();
+                let king_to_file = if is_kingside { 6 } else { 2 };
+                ((king.file() as u8, rank), (king_to_file, rank))
+            }
+            Move::EnPassant { from, to } => {
+                ((from.file() as u8, from.rank() as u8), (to.file() as u8, to.rank() as u8))
+            }
+            Move::Normal { from, to, .. } => {
+                ((from.file() as u8, from.rank() as u8), (to.file() as u8, to.rank() as u8))
+            }
+            Move::Put { to, .. } => {
+                ((to.file() as u8, to.rank() as u8), (to.file() as u8, to.rank() as u8))
+            }
+        };
+        self.last_move = Some((from_sq, to_sq));
+
         self.pos.play_unchecked(chosen_move);
         self.state = SimState::Animating(anim);
     }
@@ -309,6 +333,7 @@ impl ChessSimulator {
     fn reset_game(&mut self) {
         self.pos = Chess::default();
         self.current_move_index = 0;
+        self.last_move = None;
 
         self.playlist_cursor += 1;
         if self.playlist_cursor >= self.playlist.len() {
@@ -391,5 +416,52 @@ mod tests {
         } else {
             panic!("Expected Animating state");
         }
+    }
+
+    #[test]
+    fn test_render_snapshots() {
+        use crate::assets::AssetManager;
+        use crate::renderer::render_frame;
+        use tiny_skia::{Color as SkColor, Pixmap};
+
+        let assets = AssetManager::load_embedded();
+        let mut sim = ChessSimulator::new(260, 500, BoardStyle::Tournament, PieceStyle::Neo, false);
+        let opera_idx = sim.games.iter().position(|g| g.event.contains("Opera Game")).unwrap();
+        sim.playlist_cursor = sim.playlist.iter().position(|&idx| idx == opera_idx).unwrap();
+
+        // 1. Jugada 1: e4 terminada (resaltado amarillo de e2 y e4)
+        let t0 = Instant::now();
+        sim.perform_next_move(t0);
+        sim.update(t0 + Duration::from_millis(300));
+        assert!(matches!(sim.state, SimState::Idle { .. }));
+        assert_eq!(sim.last_move, Some(((4, 1), (4, 3))));
+
+        let mut pixmap = Pixmap::new(1920, 1080).unwrap();
+        let bg = SkColor::from_rgba8(20, 22, 34, 255);
+        render_frame(&mut pixmap.as_mut(), &assets, &sim, bg, 640.0, t0);
+        pixmap.save_png("/tmp/chess_test_highlight.png").unwrap();
+
+        // 2. Jugada 2: e5 animando en pleno vuelo (progress = 0.5)
+        let t1 = Instant::now();
+        sim.perform_next_move(t1);
+        let mut pixmap_anim = Pixmap::new(1920, 1080).unwrap();
+        render_frame(&mut pixmap_anim.as_mut(), &assets, &sim, bg, 640.0, t1 + Duration::from_millis(130));
+        pixmap_anim.save_png("/tmp/chess_test_mid_anim.png").unwrap();
+
+        // 3. Buscar una posición de jaque y verificar brillo carmesí
+        let mut check_found = false;
+        for _ in 0..40 {
+            let t = Instant::now();
+            sim.perform_next_move(t);
+            sim.update(t + Duration::from_millis(300));
+            if sim.pos.is_check() {
+                check_found = true;
+                let mut pixmap_check = Pixmap::new(1920, 1080).unwrap();
+                render_frame(&mut pixmap_check.as_mut(), &assets, &sim, bg, 640.0, t);
+                pixmap_check.save_png("/tmp/chess_test_check.png").unwrap();
+                break;
+            }
+        }
+        assert!(check_found, "Debe encontrarse una jugada con jaque en Opera Game");
     }
 }
