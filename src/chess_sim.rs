@@ -76,6 +76,7 @@ pub struct ChessSimulator {
     pub pos: Chess,
     pub state: SimState,
     pub theme: BoardTheme,
+    pub rotate_theme: bool,
     pub move_duration: Duration,
     pub pause_between_moves: Duration,
     pub pause_after_game: Duration,
@@ -87,19 +88,14 @@ pub struct ChessSimulator {
 }
 
 impl ChessSimulator {
-    pub fn new(move_ms: u64, delay_ms: u64) -> Self {
+    pub fn new(move_ms: u64, delay_ms: u64, theme: BoardTheme, rotate_theme: bool) -> Self {
         let games = get_master_games();
         let mut playlist: Vec<usize> = (0..games.len()).collect();
         let mut rng = rand::rng();
         playlist.shuffle(&mut rng);
 
-        let initial_theme = match rand::random::<u8>() % 3 {
-            0 => BoardTheme::PinkBlue,
-            1 => BoardTheme::LimeOchre,
-            _ => BoardTheme::PurpleCyan,
-        };
-
         println!("Cargadas {} partidas maestras históricas.", games.len());
+        println!("Tema de tablero seleccionado: {:?}", theme);
         println!("Partida inicial [1/{}]: '{}'", games.len(), games[playlist[0]].name);
 
         Self {
@@ -107,7 +103,8 @@ impl ChessSimulator {
             state: SimState::Idle {
                 next_move_at: Instant::now() + Duration::from_millis(400),
             },
-            theme: initial_theme,
+            theme,
+            rotate_theme,
             move_duration: Duration::from_millis(move_ms),
             pause_between_moves: Duration::from_millis(delay_ms),
             pause_after_game: Duration::from_millis(2200),
@@ -309,7 +306,9 @@ impl ChessSimulator {
             println!("--- Playlist de partidas completada. Nueva mezcla aleatoria ---");
         }
 
-        self.theme = self.theme.next();
+        if self.rotate_theme {
+            self.theme = self.theme.next();
+        }
 
         let next_idx = self.playlist[self.playlist_cursor];
         println!(
@@ -332,7 +331,7 @@ mod tests {
 
     #[test]
     fn test_castling_animation() {
-        let mut sim = ChessSimulator::new(260, 500);
+        let mut sim = ChessSimulator::new(260, 500, BoardTheme::Pink, false);
         // Forzar a la Opera Game (índice donde esté en la playlist)
         let opera_idx = sim.games.iter().position(|g| g.name.contains("Opera Game")).unwrap();
         sim.playlist_cursor = sim.playlist.iter().position(|&idx| idx == opera_idx).unwrap();

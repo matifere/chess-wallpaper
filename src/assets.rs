@@ -3,17 +3,26 @@ use tiny_skia::Pixmap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BoardTheme {
-    PinkBlue,
-    LimeOchre,
-    PurpleCyan,
+    Amber,
+    Blue,
+    Pink,
 }
 
 impl BoardTheme {
+    pub fn from_str_opt(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "amber" | "ambar" | "miel" | "madera" => Some(BoardTheme::Amber),
+            "blue" | "azul" | "glaciar" | "hielo" => Some(BoardTheme::Blue),
+            "pink" | "rosa" | "pastel" => Some(BoardTheme::Pink),
+            _ => None,
+        }
+    }
+
     pub fn next(&self) -> Self {
         match self {
-            BoardTheme::PinkBlue => BoardTheme::LimeOchre,
-            BoardTheme::LimeOchre => BoardTheme::PurpleCyan,
-            BoardTheme::PurpleCyan => BoardTheme::PinkBlue,
+            BoardTheme::Amber => BoardTheme::Blue,
+            BoardTheme::Blue => BoardTheme::Pink,
+            BoardTheme::Pink => BoardTheme::Amber,
         }
     }
 }
@@ -64,27 +73,24 @@ pub struct TileAssets {
 }
 
 pub struct AssetManager {
-    // Set 01 (Pink vs Blue)
+    // 6 Colores de piezas
     pub pink_pieces: PieceAssets,
     pub blue_pieces: PieceAssets,
-    pub pink_tiles: TileAssets,
-    pub blue_tiles: TileAssets,
-
-    // Set 02 (Lime vs Ochre)
     pub lime_pieces: PieceAssets,
     pub ochre_pieces: PieceAssets,
-    pub green_tiles: TileAssets,
-    pub amber_tiles: TileAssets,
-
-    // Set 03 (Purple vs Cyan)
     pub purple_pieces: PieceAssets,
     pub cyan_pieces: PieceAssets,
+
+    // 3 Tableros de baldosas a juego
+    pub amber_tiles: TileAssets,
+    pub blue_tiles: TileAssets,
+    pub pink_tiles: TileAssets,
 }
 
 impl AssetManager {
     pub fn load_embedded() -> Self {
         Self {
-            // Set 01
+            // Set 01 (Rosa & Azul)
             pink_pieces: PieceAssets::from_bytes(
                 include_bytes!("../assets/sprites/set_01/pink/rook.png"),
                 include_bytes!("../assets/sprites/set_01/pink/knight.png"),
@@ -101,16 +107,8 @@ impl AssetManager {
                 include_bytes!("../assets/sprites/set_01/blue/king.png"),
                 include_bytes!("../assets/sprites/set_01/blue/pawn.png"),
             ),
-            pink_tiles: TileAssets {
-                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/pink_dark.png")).unwrap(),
-                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/pink_light.png")).unwrap(),
-            },
-            blue_tiles: TileAssets {
-                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/blue_dark.png")).unwrap(),
-                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/blue_light.png")).unwrap(),
-            },
 
-            // Set 02
+            // Set 02 (Lima & Ocre)
             lime_pieces: PieceAssets::from_bytes(
                 include_bytes!("../assets/sprites/set_02/lime/rook.png"),
                 include_bytes!("../assets/sprites/set_02/lime/knight.png"),
@@ -127,16 +125,8 @@ impl AssetManager {
                 include_bytes!("../assets/sprites/set_02/ochre/king.png"),
                 include_bytes!("../assets/sprites/set_02/ochre/pawn.png"),
             ),
-            green_tiles: TileAssets {
-                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/green_dark.png")).unwrap(),
-                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/green_light.png")).unwrap(),
-            },
-            amber_tiles: TileAssets {
-                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/amber_dark.png")).unwrap(),
-                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/amber_light.png")).unwrap(),
-            },
 
-            // Set 03
+            // Set 03 (Púrpura & Cian)
             purple_pieces: PieceAssets::from_bytes(
                 include_bytes!("../assets/sprites/set_03/purple/rook.png"),
                 include_bytes!("../assets/sprites/set_03/purple/knight.png"),
@@ -153,32 +143,49 @@ impl AssetManager {
                 include_bytes!("../assets/sprites/set_03/cyan/king.png"),
                 include_bytes!("../assets/sprites/set_03/cyan/pawn.png"),
             ),
+
+            // Baldosas
+            amber_tiles: TileAssets {
+                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/amber_dark.png")).unwrap(),
+                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/amber_light.png")).unwrap(),
+            },
+            blue_tiles: TileAssets {
+                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/blue_dark.png")).unwrap(),
+                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/blue_light.png")).unwrap(),
+            },
+            pink_tiles: TileAssets {
+                dark: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/pink_dark.png")).unwrap(),
+                light: Pixmap::decode_png(include_bytes!("../assets/sprites/tiles/pink_light.png")).unwrap(),
+            },
         }
     }
 
     pub fn get_piece(&self, theme: BoardTheme, color: Color, role: Role) -> &Pixmap {
         match (theme, color) {
-            (BoardTheme::PinkBlue, Color::White) => self.pink_pieces.get(role),
-            (BoardTheme::PinkBlue, Color::Black) => self.blue_pieces.get(role),
+            // Ámbar: Piezas Lima vs Ocre Dorado
+            (BoardTheme::Amber, Color::White) => self.lime_pieces.get(role),
+            (BoardTheme::Amber, Color::Black) => self.ochre_pieces.get(role),
 
-            (BoardTheme::LimeOchre, Color::White) => self.lime_pieces.get(role),
-            (BoardTheme::LimeOchre, Color::Black) => self.ochre_pieces.get(role),
+            // Azul Glaciar: Piezas Púrpura vs Cian Hielo
+            (BoardTheme::Blue, Color::White) => self.cyan_pieces.get(role),
+            (BoardTheme::Blue, Color::Black) => self.purple_pieces.get(role),
 
-            (BoardTheme::PurpleCyan, Color::White) => self.purple_pieces.get(role),
-            (BoardTheme::PurpleCyan, Color::Black) => self.cyan_pieces.get(role),
+            // Rosa Pastel: Piezas Rosa vs Azul Noche
+            (BoardTheme::Pink, Color::White) => self.pink_pieces.get(role),
+            (BoardTheme::Pink, Color::Black) => self.blue_pieces.get(role),
         }
     }
 
     pub fn get_tile(&self, theme: BoardTheme, is_dark: bool) -> &Pixmap {
         match theme {
-            BoardTheme::PinkBlue => {
-                if is_dark { &self.pink_tiles.dark } else { &self.blue_tiles.light }
+            BoardTheme::Amber => {
+                if is_dark { &self.amber_tiles.dark } else { &self.amber_tiles.light }
             }
-            BoardTheme::LimeOchre => {
-                if is_dark { &self.green_tiles.dark } else { &self.amber_tiles.light }
+            BoardTheme::Blue => {
+                if is_dark { &self.blue_tiles.dark } else { &self.blue_tiles.light }
             }
-            BoardTheme::PurpleCyan => {
-                if is_dark { &self.pink_tiles.light } else { &self.blue_tiles.dark }
+            BoardTheme::Pink => {
+                if is_dark { &self.pink_tiles.dark } else { &self.pink_tiles.light }
             }
         }
     }

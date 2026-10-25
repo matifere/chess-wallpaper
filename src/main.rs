@@ -6,7 +6,7 @@ mod renderer;
 use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 
-use assets::AssetManager;
+use assets::{AssetManager, BoardTheme};
 use chess_sim::{ChessSimulator, SimState};
 
 use smithay_client_toolkit::{
@@ -290,9 +290,17 @@ smithay_client_toolkit::delegate_dispatch2!(AppState);
 fn main() {
     let mut args = pico_args::Arguments::from_env();
 
+    let theme_str: Option<String> = args.opt_value_from_str(["-t", "--theme"]).unwrap_or(None);
+    let selected_theme = theme_str
+        .as_deref()
+        .and_then(BoardTheme::from_str_opt)
+        .unwrap_or(BoardTheme::Amber); // Por defecto: Ámbar / Miel cálido
+
+    let rotate_theme = args.contains("--rotate");
+
     if let Ok(Some(path)) = args.opt_value_from_str::<_, String>("--snapshot") {
         let assets = AssetManager::load_embedded();
-        let sim = ChessSimulator::new(260, 500);
+        let sim = ChessSimulator::new(260, 500, selected_theme, false);
         let mut pixmap = tiny_skia::Pixmap::new(800, 800).unwrap();
         renderer::render_frame(&mut pixmap.as_mut(), &assets, &sim, Instant::now());
         pixmap.save_png(&path).expect("Failed to save snapshot");
@@ -314,6 +322,7 @@ fn main() {
 
     println!("Iniciando Chess Wallpaper (Rust)");
     println!("Modo: {}", if is_window_mode { "Ventana de prueba (-w)" } else { "Fondo de escritorio Layer-Shell" });
+    println!("Tablero: {:?} (Fijo: {})", selected_theme, !rotate_theme);
     println!("Velocidad de salto: {move_speed} ms | Pausa entre jugadas: {move_delay} ms");
 
     let conn = Connection::connect_to_env().expect("No se pudo conectar al compositor Wayland");
@@ -357,7 +366,7 @@ fn main() {
     };
 
     let assets = AssetManager::load_embedded();
-    let sim = ChessSimulator::new(move_speed, move_delay);
+    let sim = ChessSimulator::new(move_speed, move_delay, selected_theme, rotate_theme);
 
     let mut app_state = AppState {
         registry_state: RegistryState::new(&globals),
