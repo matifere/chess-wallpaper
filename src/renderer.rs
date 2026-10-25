@@ -2,7 +2,7 @@ use std::time::Instant;
 use shakmaty::{Piece, Position, Square};
 use tiny_skia::{Color as SkColor, FilterQuality, Paint, PathBuilder, PixmapMut, PixmapPaint, Rect, Transform};
 use crate::assets::AssetManager;
-use crate::chess_sim::{ChessSimulator, SimState};
+use crate::chess_sim::{ChessSimulator, SimState, SinglePieceAnim};
 
 pub fn render_frame(
     canvas: &mut PixmapMut,
@@ -13,7 +13,7 @@ pub fn render_frame(
     let width = canvas.width() as f32;
     let height = canvas.height() as f32;
 
-    // 1. Limpiar fondo con color oscuro elegante (Catppuccin Crust)
+    // 1. Limpiar fondo con color oscuro elegante
     canvas.fill(SkColor::from_rgba8(17, 17, 27, 255));
 
     // 2. Calcular dimensiones del tablero
@@ -32,7 +32,7 @@ pub fn render_frame(
     let frame_w = board_total_w + frame_pad * 2.0;
     let frame_h = board_total_h + frame_pad * 2.0;
 
-    // Sombra suave difusa del marco
+    // Sombra suave difusa
     let mut shadow_paint = Paint::default();
     shadow_paint.set_color(SkColor::from_rgba8(0, 0, 0, 95));
     if let Some(r) = Rect::from_xywh(frame_x - 4.0, frame_y + 4.0, frame_w + 8.0, frame_h + 10.0) {
@@ -50,7 +50,7 @@ pub fn render_frame(
         canvas.fill_rect(r, &frame_paint, Transform::identity(), None);
     }
 
-    // Borde fino interior del marco
+    // Borde fino interior
     let mut border_paint = Paint::default();
     border_paint.set_color(SkColor::from_rgba8(45, 48, 68, 200));
     let mut stroke = tiny_skia::Stroke::default();
@@ -92,66 +92,44 @@ pub fn render_frame(
         }
     }
 
-    // Identificar pieza que se está animando
+    // Identificar movimiento activo
     let animating_move = match sim.state {
         SimState::Animating(ref anim) => Some(anim),
         _ => None,
     };
 
-    // 5. Dibujar sombra de la pieza que salta en el suelo
+    // 5. Dibujar sombras en el suelo para las piezas en vuelo
     if let Some(anim) = animating_move {
-        let (cur_f, cur_r) = anim.current_pos(now);
-        let jump = anim.jump_height(now);
-
-        // Posición de la sombra sobre el suelo del tablero
-        let sx = board_x + cur_f * tile_size + tile_size * 0.5;
-        let sy = board_y + (7.0 - cur_r) * tile_size + tile_size * 0.88;
-
-        let shadow_w = (tile_size * 0.55) * (1.0 - jump * 0.28);
-        let shadow_h = (tile_size * 0.22) * (1.0 - jump * 0.28);
-        let shadow_alpha = (100.0 * (1.0 - jump * 0.50)) as u8;
-
-        let mut oval_paint = Paint::default();
-        oval_paint.set_color_rgba8(0, 0, 0, shadow_alpha);
-
-        let mut pb = PathBuilder::new();
-        pb.push_oval(Rect::from_xywh(sx - shadow_w / 2.0, sy - shadow_h / 2.0, shadow_w, shadow_h).unwrap());
-        if let Some(path) = pb.finish() {
-            canvas.fill_path(&path, &oval_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        let progress = anim.progress(now);
+        draw_ground_shadow(canvas, &anim.primary, progress, board_x, board_y, tile_size);
+        if let Some(ref sec) = anim.secondary {
+            draw_ground_shadow(canvas, sec, progress, board_x, board_y, tile_size);
         }
     }
 
-    // 6. Dibujar piezas estáticas
+    // 6. Dibujar piezas estáticas (excluyendo casillas de origen/destino de piezas que se animan)
     let board = sim.pos.board();
     for sq in Square::ALL {
         let file_idx = sq.file() as u8;
         let rank_idx = sq.rank() as u8;
+        let coords = (file_idx, rank_idx);
 
         if let Some(anim) = animating_move {
-            if anim.to == (file_idx, rank_idx) {
-                // Pieza capturada desvaneciéndose
-                if let Some(captured_piece) = anim.captured {
-                    let progress = anim.progress(now);
-                    let alpha = (1.0 - progress).clamp(0.0, 1.0);
-                    if alpha > 0.02 {
-                        draw_piece_at_square(
-                            canvas,
-                            assets,
-                            sim,
-                            captured_piece,
-                            file_idx as f32,
-                            rank_idx as f32,
-                            0.0,
-                            board_x,
-                            board_y,
-                            tile_size,
-                            1.0,
-                            1.0,
-                            alpha,
-                        );
-                    }
-                }
+            // Excluir casillas del movimiento primario (ej. Rey)
+            if coords == anim.primary.from || coords == anim.primary.to {
                 continue;
+            }
+            // Excluir casillas del movimiento secundario (ej. Torre en enroque)
+            if let Some(ref sec) = anim.secondary {
+                if coords == sec.from || coords == sec.to {
+                    continue;
+                }
+            }
+            // Excluir casilla de pieza capturada
+            if let Some((_, cap_coords)) = anim.captured {
+                if coords == cap_coords {
+                    continue;
+                }
             }
         }
 
@@ -174,29 +152,103 @@ pub fn render_frame(
         }
     }
 
-    // 7. Dibujar pieza en movimiento con arco de salto y rebote Jelly
+    // 7. Si hay una pieza capturada, dibujarla desvaneciéndose en su casilla
     if let Some(anim) = animating_move {
-        let (cur_f, cur_r) = anim.current_pos(now);
-        let jump = anim.jump_height(now);
-        let arc_y = jump * (tile_size * 0.38);
-        let (squish_x, squish_y) = anim.jelly_scale(now);
-
-        draw_piece_at_square(
-            canvas,
-            assets,
-            sim,
-            anim.piece,
-            cur_f,
-            cur_r,
-            arc_y,
-            board_x,
-            board_y,
-            tile_size,
-            squish_x,
-            squish_y,
-            1.0,
-        );
+        if let Some((captured_piece, (cap_f, cap_r))) = anim.captured {
+            let progress = anim.progress(now);
+            let alpha = (1.0 - progress).clamp(0.0, 1.0);
+            if alpha > 0.02 {
+                draw_piece_at_square(
+                    canvas,
+                    assets,
+                    sim,
+                    captured_piece,
+                    cap_f as f32,
+                    cap_r as f32,
+                    0.0,
+                    board_x,
+                    board_y,
+                    tile_size,
+                    1.0,
+                    1.0,
+                    alpha,
+                );
+            }
+        }
     }
+
+    // 8. Dibujar las piezas en animación (Rey y Torre si es enroque)
+    if let Some(anim) = animating_move {
+        let progress = anim.progress(now);
+
+        // Pieza primaria (Rey o pieza estándar)
+        draw_animated_piece(canvas, assets, sim, &anim.primary, progress, board_x, board_y, tile_size);
+
+        // Pieza secundaria (Torre en el enroque)
+        if let Some(ref sec) = anim.secondary {
+            draw_animated_piece(canvas, assets, sim, sec, progress, board_x, board_y, tile_size);
+        }
+    }
+}
+
+fn draw_ground_shadow(
+    canvas: &mut PixmapMut,
+    anim: &SinglePieceAnim,
+    progress: f32,
+    board_x: f32,
+    board_y: f32,
+    tile_size: f32,
+) {
+    let (cur_f, cur_r) = anim.current_pos(progress);
+    let jump = anim.jump_height(progress);
+
+    let sx = board_x + cur_f * tile_size + tile_size * 0.5;
+    let sy = board_y + (7.0 - cur_r) * tile_size + tile_size * 0.88;
+
+    let shadow_w = (tile_size * 0.55) * (1.0 - jump * 0.28);
+    let shadow_h = (tile_size * 0.22) * (1.0 - jump * 0.28);
+    let shadow_alpha = (100.0 * (1.0 - jump * 0.50)) as u8;
+
+    let mut oval_paint = Paint::default();
+    oval_paint.set_color_rgba8(0, 0, 0, shadow_alpha);
+
+    let mut pb = PathBuilder::new();
+    pb.push_oval(Rect::from_xywh(sx - shadow_w / 2.0, sy - shadow_h / 2.0, shadow_w, shadow_h).unwrap());
+    if let Some(path) = pb.finish() {
+        canvas.fill_path(&path, &oval_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+    }
+}
+
+fn draw_animated_piece(
+    canvas: &mut PixmapMut,
+    assets: &AssetManager,
+    sim: &ChessSimulator,
+    anim: &SinglePieceAnim,
+    progress: f32,
+    board_x: f32,
+    board_y: f32,
+    tile_size: f32,
+) {
+    let (cur_f, cur_r) = anim.current_pos(progress);
+    let jump = anim.jump_height(progress);
+    let arc_y = jump * (tile_size * 0.38);
+    let (squish_x, squish_y) = anim.jelly_scale(progress);
+
+    draw_piece_at_square(
+        canvas,
+        assets,
+        sim,
+        anim.piece,
+        cur_f,
+        cur_r,
+        arc_y,
+        board_x,
+        board_y,
+        tile_size,
+        squish_x,
+        squish_y,
+        1.0,
+    );
 }
 
 fn draw_piece_at_square(
@@ -216,7 +268,6 @@ fn draw_piece_at_square(
 ) {
     let pix = assets.get_piece(sim.theme, piece.color, piece.role);
 
-    // Escala uniforme proporcional basada en la altura del Rey (124px)
     let reference_king_h = 124.0;
     let base_scale = (tile_size * 0.80) / reference_king_h;
 
@@ -226,7 +277,6 @@ fn draw_piece_at_square(
     let pw = (pix.width() as f32) * scale_x;
     let ph = (pix.height() as f32) * scale_y;
 
-    // Centrado horizontal y apoyado en la base de la casilla, menos la elevación del salto
     let tx = board_x + file_f * tile_size + (tile_size - pw) / 2.0;
     let ty = board_y + (7.0 - rank_f) * tile_size + (tile_size - ph) * 0.90 - arc_offset_y;
 
