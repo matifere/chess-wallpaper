@@ -348,6 +348,7 @@ fn main() {
         println!("        --pgn <ARCHIVO>      Cargar archivo PGN con partidas del usuario");
         println!("        --pgn-dir <DIR>      Cargar directorio de archivos .pgn");
         println!("        --only-custom        Reproducir exclusivamente partidas personalizadas del usuario");
+        println!("        --layer <CAPA>       Capa Wayland: bottom (default, visible sobre fondo) o background");
         println!("        --snapshot <PATH>    Generar captura PNG y salir");
         println!("    -h, --help               Mostrar esta ayuda");
         println!();
@@ -428,6 +429,12 @@ fn main() {
         .unwrap_or(None)
         .unwrap_or(640.0); // Tamaño óptimo de 640px para 1080p (80px por casilla)
 
+    let layer_str: Option<String> = args.opt_value_from_str("--layer").unwrap_or(None);
+    let chosen_layer = match layer_str.as_deref().unwrap_or("bottom") {
+        "background" | "bg" => Layer::Background,
+        _ => Layer::Bottom,
+    };
+
     if let Ok(Some(path)) = args.opt_value_from_str::<_, String>("--snapshot") {
         let assets = AssetManager::load_embedded();
         let sim = ChessSimulator::new(260, 500, selected_board, selected_pieces, false, games.clone());
@@ -485,12 +492,13 @@ fn main() {
         let layer_surface = layer_shell.create_layer_surface(
             &qh,
             surface,
-            Layer::Background,
-            Some("jellychess_background"),
+            chosen_layer,
+            Some("chess_wallpaper"),
             None,
         );
         layer_surface.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
-        layer_surface.set_exclusive_zone(0);
+        layer_surface.set_exclusive_zone(-1); // -1: Ignorar zonas de exclusión (barras/paneles) y ocupar el 100% de la pantalla
+        layer_surface.set_margin(0, 0, 0, 0);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer_surface.commit();
         (SurfaceMode::Layer(layer_surface), 1920, 1080)
