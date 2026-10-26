@@ -357,7 +357,7 @@ fn main() {
         println!("        --pgn-dir <DIR>      Cargar directorio de archivos .pgn");
         println!("        --only-custom        Reproducir exclusivamente partidas personalizadas del usuario");
         println!("        --no-auto-pause      Desactivar pausa automática cuando la pantalla está ocupada por ventanas");
-        println!("        --layer <CAPA>       Capa Wayland: bottom (default, visible sobre fondo) o background");
+        println!("        --layer <CAPA>       Capa Wayland: background (default, compatible con overview backdrop) o bottom");
         println!("        --snapshot <PATH>    Generar captura PNG y salir");
         println!("    -h, --help               Mostrar esta ayuda");
         println!();
@@ -439,9 +439,9 @@ fn main() {
         .unwrap_or(640.0); // Tamaño óptimo de 640px para 1080p (80px por casilla)
 
     let layer_str: Option<String> = args.opt_value_from_str("--layer").unwrap_or(None);
-    let chosen_layer = match layer_str.as_deref().unwrap_or("bottom") {
-        "background" | "bg" => Layer::Background,
-        _ => Layer::Bottom,
+    let chosen_layer = match layer_str.as_deref().unwrap_or("background") {
+        "bottom" => Layer::Bottom,
+        _ => Layer::Background,
     };
 
     if let Ok(Some(path)) = args.opt_value_from_str::<_, String>("--snapshot") {
