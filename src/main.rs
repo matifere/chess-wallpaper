@@ -520,6 +520,20 @@ fn main() {
     loop_handle
         .insert_source(ping_source, |_, _, state: &mut AppState| {
             if !state.occlusion.is_occluded() {
+                let now = Instant::now();
+                match state.sim.state {
+                    SimState::Idle { next_move_at } => {
+                        if now >= next_move_at {
+                            state.sim.perform_next_move(now);
+                        }
+                    }
+                    SimState::GameOver { restart_at } => {
+                        if now >= restart_at {
+                            state.sim.update(now);
+                        }
+                    }
+                    SimState::Animating(_) => {}
+                }
                 state.draw();
             }
         })

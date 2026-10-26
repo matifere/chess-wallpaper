@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,6 +42,101 @@ impl OcclusionDetector {
     }
 }
 
+/// Estado en memoria sincronizado en tiempo real con Niri EventStream
+#[derive(Default, Debug)]
+pub struct NiriState {
+    pub overview_open: bool,
+    pub active_workspace_id: Option<u64>,
+    pub workspaces: HashMap<u64, Value>,
+    pub windows: HashMap<u64, u64>, // win_id -> workspace_id
+}
+
+impl NiriState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn process_event(&mut self, val: &Value) {
+        if let Some(ws_obj) = val.get("WorkspacesChanged") {
+            if let Some(list) = ws_obj.get("workspaces").and_then(|v| v.as_array()) {
+                self.workspaces.clear();
+                for ws in list {
+                    if let Some(id) = ws.get("id").and_then(|v| v.as_u64()) {
+                        let is_active = ws.get("is_active").and_then(|v| v.as_bool()).unwrap_or(false);
+                        let is_focused = ws.get("is_focused").and_then(|v| v.as_bool()).unwrap_or(false);
+                        if is_active || is_focused {
+                            self.active_workspace_id = Some(id);
+                        }
+                        self.workspaces.insert(id, ws.clone());
+                    }
+                }
+            }
+        } else if let Some(act) = val.get("WorkspaceActivated") {
+            if let Some(id) = act.get("id").and_then(|v| v.as_u64()) {
+                self.active_workspace_id = Some(id);
+                for (&wid, ws) in self.workspaces.iter_mut() {
+                    if let Some(map) = ws.as_object_mut() {
+                        let active = wid == id;
+                        map.insert("is_active".into(), Value::Bool(active));
+                        map.insert("is_focused".into(), Value::Bool(active));
+                    }
+                }
+            }
+        } else if let Some(win_obj) = val.get("WindowsChanged") {
+            if let Some(list) = win_obj.get("windows").and_then(|v| v.as_array()) {
+                self.windows.clear();
+                for win in list {
+                    if let (Some(win_id), Some(ws_id)) = (
+                        win.get("id").and_then(|v| v.as_u64()),
+                        win.get("workspace_id").and_then(|v| v.as_u64()),
+                    ) {
+                        self.windows.insert(win_id, ws_id);
+                    }
+                }
+            }
+        } else if let Some(win_obj) = val.get("WindowOpenedOrChanged").and_then(|v| v.get("window")) {
+            if let (Some(win_id), Some(ws_id)) = (
+                win_obj.get("id").and_then(|v| v.as_u64()),
+                win_obj.get("workspace_id").and_then(|v| v.as_u64()),
+            ) {
+                self.windows.insert(win_id, ws_id);
+            }
+        } else if let Some(closed) = val.get("WindowClosed") {
+            if let Some(win_id) = closed.get("id").and_then(|v| v.as_u64()) {
+                self.windows.remove(&win_id);
+            }
+        } else if let Some(ov_obj) = val.get("OverviewOpenedOrClosed") {
+            if let Some(open) = ov_obj.get("is_open").and_then(|v| v.as_bool()) {
+                self.overview_open = open;
+            }
+        }
+    }
+
+    pub fn is_occluded(&self, target_output: Option<&str>) -> bool {
+        // Si Overview está abierto, el fondo es siempre visible
+        if self.overview_open {
+            return false;
+        }
+
+        let Some(active_ws_id) = self.active_workspace_id else {
+            return false;
+        };
+
+        // Si se especificó un monitor concreto, verificar que el workspace pertenezca a él
+        if let Some(target) = target_output {
+            if let Some(ws) = self.workspaces.get(&active_ws_id) {
+                if ws.get("output").and_then(|v| v.as_str()) != Some(target) {
+                    return false;
+                }
+            }
+        }
+
+        // Contar ventanas que pertenecen al workspace activo
+        let wins_in_active = self.windows.values().filter(|&&ws_id| ws_id == active_ws_id).count();
+        wins_in_active > 0
+    }
+}
+
 fn run_niri_listener(
     socket_path: &str,
     target_output: Option<&str>,
@@ -56,10 +152,7 @@ fn run_niri_listener(
                 }
                 let mut reader = BufReader::new(stream);
                 let mut line = String::new();
-
-                let mut overview_open = false;
-                let mut workspaces: Vec<Value> = Vec::new();
-                let mut windows: Vec<Value> = Vec::new();
+                let mut state = NiriState::new();
 
                 while reader.read_line(&mut line).is_ok() {
                     if line.is_empty() {
@@ -67,21 +160,9 @@ fn run_niri_listener(
                     }
 
                     if let Ok(val) = serde_json::from_str::<Value>(&line) {
-                        if let Some(ws_obj) = val.get("WorkspacesChanged") {
-                            if let Some(list) = ws_obj.get("workspaces").and_then(|v| v.as_array()) {
-                                workspaces = list.clone();
-                            }
-                        } else if let Some(win_obj) = val.get("WindowsChanged") {
-                            if let Some(list) = win_obj.get("windows").and_then(|v| v.as_array()) {
-                                windows = list.clone();
-                            }
-                        } else if let Some(ov_obj) = val.get("OverviewOpenedOrClosed") {
-                            if let Some(open) = ov_obj.get("is_open").and_then(|v| v.as_bool()) {
-                                overview_open = open;
-                            }
-                        }
+                        state.process_event(&val);
 
-                        let covered = calculate_occlusion(overview_open, target_output, &workspaces, &windows);
+                        let covered = state.is_occluded(target_output);
                         let prev = flag.swap(covered, Ordering::Relaxed);
                         if prev != covered {
                             if covered {
@@ -104,44 +185,26 @@ fn run_niri_listener(
     }
 }
 
+#[allow(dead_code)]
 pub fn calculate_occlusion(
     overview_open: bool,
     target_output: Option<&str>,
     workspaces: &[Value],
     windows: &[Value],
 ) -> bool {
-    // Si Overview está abierto, el fondo es visible siempre
-    if overview_open {
-        return false;
-    }
-
-    // Buscar workspace activo en el output correspondiente
-    let active_ws = workspaces.iter().find(|w| {
-        let is_active = w.get("is_active").and_then(|v| v.as_bool()).unwrap_or(false);
-        if !is_active {
-            return false;
+    let mut state = NiriState::new();
+    state.overview_open = overview_open;
+    state.process_event(&serde_json::json!({
+        "WorkspacesChanged": {
+            "workspaces": workspaces
         }
-        if let Some(target) = target_output {
-            w.get("output").and_then(|v| v.as_str()) == Some(target)
-        } else {
-            // Si no se especificó output, tomar el enfocado o cualquier activo
-            w.get("is_focused").and_then(|v| v.as_bool()).unwrap_or(true)
+    }));
+    state.process_event(&serde_json::json!({
+        "WindowsChanged": {
+            "windows": windows
         }
-    });
-
-    if let Some(ws) = active_ws {
-        if let Some(id) = ws.get("id").and_then(|v| v.as_u64()) {
-            // Verificar si hay ventanas en este workspace activo
-            let wins_count = windows
-                .iter()
-                .filter(|w| w.get("workspace_id").and_then(|v| v.as_u64()) == Some(id))
-                .count();
-
-            return wins_count > 0;
-        }
-    }
-
-    false
+    }));
+    state.is_occluded(target_output)
 }
 
 #[cfg(test)]
@@ -162,7 +225,6 @@ mod tests {
             "workspace_id": 1
         })];
 
-        // Aunque haya ventanas, si overview está abierto el fondo es visible
         assert!(!calculate_occlusion(true, None, &workspaces, &windows));
     }
 
@@ -176,10 +238,9 @@ mod tests {
         })];
         let windows = vec![json!({
             "id": 10,
-            "workspace_id": 1 // Ventana en el workspace 1, el 2 está vacío
+            "workspace_id": 1
         })];
 
-        // Workspace activo 2 no tiene ventanas -> fondo visible
         assert!(!calculate_occlusion(false, None, &workspaces, &windows));
     }
 
@@ -196,7 +257,86 @@ mod tests {
             "workspace_id": 1
         })];
 
-        // Workspace activo 1 tiene una ventana -> fondo tapado
         assert!(calculate_occlusion(false, None, &workspaces, &windows));
+    }
+
+    #[test]
+    fn test_workspace_activated_dynamic_switch() {
+        let mut state = NiriState::new();
+        // Inicialmente en workspace 1 con 1 ventana
+        state.process_event(&json!({
+            "WorkspacesChanged": {
+                "workspaces": [
+                    {"id": 1, "is_active": true, "is_focused": true},
+                    {"id": 2, "is_active": false, "is_focused": false}
+                ]
+            }
+        }));
+        state.process_event(&json!({
+            "WindowsChanged": {
+                "windows": [
+                    {"id": 100, "workspace_id": 1}
+                ]
+            }
+        }));
+
+        assert!(state.is_occluded(None));
+
+        // El usuario cambia al workspace 2 (vacío)
+        state.process_event(&json!({
+            "WorkspaceActivated": {
+                "id": 2,
+                "focused": true
+            }
+        }));
+
+        // ¡Ahora debe estar desocluido!
+        assert!(!state.is_occluded(None));
+
+        // El usuario vuelve al workspace 1
+        state.process_event(&json!({
+            "WorkspaceActivated": {
+                "id": 1,
+                "focused": true
+            }
+        }));
+
+        assert!(state.is_occluded(None));
+    }
+
+    #[test]
+    fn test_window_open_and_close_dynamic() {
+        let mut state = NiriState::new();
+        state.process_event(&json!({
+            "WorkspacesChanged": {
+                "workspaces": [
+                    {"id": 1, "is_active": true, "is_focused": true}
+                ]
+            }
+        }));
+
+        // Sin ventanas -> no ocluido
+        assert!(!state.is_occluded(None));
+
+        // Se abre una ventana en workspace 1
+        state.process_event(&json!({
+            "WindowOpenedOrChanged": {
+                "window": {
+                    "id": 55,
+                    "workspace_id": 1
+                }
+            }
+        }));
+
+        assert!(state.is_occluded(None));
+
+        // Se cierra la ventana
+        state.process_event(&json!({
+            "WindowClosed": {
+                "id": 55
+            }
+        }));
+
+        assert!(!state.is_occluded(None));
     }
 }
