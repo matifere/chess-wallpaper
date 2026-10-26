@@ -2,6 +2,7 @@ mod assets;
 mod chess_sim;
 mod engine;
 mod games;
+mod occlusion;
 mod pgn;
 mod renderer;
 
@@ -10,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use assets::{AssetManager, BoardStyle, PieceStyle};
 use chess_sim::{ChessSimulator, SimState};
+use occlusion::OcclusionDetector;
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState, FrameCallbackData},
@@ -36,6 +38,7 @@ use smithay_client_toolkit::{
     shm::{slot::SlotPool, Shm, ShmHandler},
 };
 use smithay_client_toolkit::reexports::calloop::{
+    ping::make_ping,
     timer::{TimeoutAction, Timer},
     EventLoop,
 };
@@ -85,12 +88,13 @@ pub struct AppState {
     sim: ChessSimulator,
     bg_color: Color,
     board_size: f32,
+    occlusion: OcclusionDetector,
     qh: QueueHandle<AppState>,
 }
 
 impl AppState {
     pub fn draw(&mut self) {
-        if self.width == 0 || self.height == 0 {
+        if self.width == 0 || self.height == 0 || self.occlusion.is_occluded() {
             return;
         }
 
@@ -177,6 +181,10 @@ impl CompositorHandler for AppState {
         _surface: &wl_surface::WlSurface,
         _time: u32,
     ) {
+        if self.occlusion.is_occluded() {
+            return;
+        }
+
         if matches!(self.sim.state, SimState::Animating(_)) {
             let now = Instant::now();
             self.sim.update(now);
@@ -348,6 +356,7 @@ fn main() {
         println!("        --pgn <ARCHIVO>      Cargar archivo PGN con partidas del usuario");
         println!("        --pgn-dir <DIR>      Cargar directorio de archivos .pgn");
         println!("        --only-custom        Reproducir exclusivamente partidas personalizadas del usuario");
+        println!("        --no-auto-pause      Desactivar pausa automática cuando la pantalla está ocupada por ventanas");
         println!("        --layer <CAPA>       Capa Wayland: bottom (default, visible sobre fondo) o background");
         println!("        --snapshot <PATH>    Generar captura PNG y salir");
         println!("    -h, --help               Mostrar esta ayuda");
@@ -447,6 +456,8 @@ fn main() {
 
     let is_window_mode = args.contains(["-w", "--window"]);
     let is_fast = args.contains(["-f", "--fast"]);
+    let no_auto_pause = args.contains("--no-auto-pause");
+    let auto_pause_enabled = !is_window_mode && !no_auto_pause;
 
     let (default_speed, default_delay) = if is_fast {
         (200, 320)
@@ -462,6 +473,7 @@ fn main() {
     println!("Tablero: {:?} | Piezas: {:?} (Rotar: {}) | Tamaño: {board_size}px", selected_board, selected_pieces, rotate_theme);
     println!("Color de fondo: rgba({}, {}, {}, {})", bg_color.red(), bg_color.green(), bg_color.blue(), bg_color.alpha());
     println!("Velocidad de salto: {move_speed} ms | Pausa entre jugadas: {move_delay} ms");
+    println!("Auto-pausa por oclusión: {}", if auto_pause_enabled { "Activada (0% CPU cuando hay ventanas abiertas)" } else { "Desactivada" });
 
     let conn = Connection::connect_to_env().expect("No se pudo conectar al compositor Wayland");
     let (globals, event_queue) = registry_queue_init(&conn).expect("Error al inicializar registro Wayland");
@@ -504,6 +516,17 @@ fn main() {
         (SurfaceMode::Layer(layer_surface), 1920, 1080)
     };
 
+    let (ping, ping_source) = make_ping().expect("Error al crear calloop ping");
+    loop_handle
+        .insert_source(ping_source, |_, _, state: &mut AppState| {
+            if !state.occlusion.is_occluded() {
+                state.draw();
+            }
+        })
+        .expect("Error al registrar calloop ping_source");
+
+    let occlusion = OcclusionDetector::new(auto_pause_enabled, None, Some(ping));
+
     let assets = AssetManager::load_embedded();
     let sim = ChessSimulator::new(move_speed, move_delay, selected_board, selected_pieces, rotate_theme, games);
 
@@ -522,6 +545,7 @@ fn main() {
         sim,
         bg_color,
         board_size,
+        occlusion,
         qh: qh.clone(),
     };
 
@@ -529,6 +553,11 @@ fn main() {
     let timer = Timer::from_duration(Duration::from_millis(50));
     loop_handle
         .insert_source(timer, move |_, _, state: &mut AppState| {
+            // Pausa reactiva: si la pantalla está tapada por ventanas, dormir y ahorrar 100% de CPU
+            if state.occlusion.is_occluded() {
+                return TimeoutAction::ToDuration(Duration::from_millis(300));
+            }
+
             let now = Instant::now();
             match state.sim.state {
                 SimState::Idle { next_move_at } => {
