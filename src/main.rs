@@ -111,7 +111,7 @@ impl AppState {
             }
         };
 
-        // Renderizar frame con tiny-skia
+        // Renderizar frame con tiny-skia (formato nativo RGBA)
         if let Some(mut pixmap) = PixmapMut::from_bytes(canvas, width, height) {
             renderer::render_frame(
                 &mut pixmap,
@@ -121,6 +121,15 @@ impl AppState {
                 self.board_size,
                 Instant::now(),
             );
+        }
+
+        // ¡IMPORTANTE! tiny-skia escribe en formato RGBA (bytes: R, G, B, A).
+        // Sin embargo, wl_shm::Format::Argb8888 en arquitecturas little-endian (x86_64 / arm64)
+        // almacena los componentes en memoria como B, G, R, A.
+        // Sin este swap, los canales Rojo y Azul quedan invertidos en el compositor Wayland (Niri/Hyprland/Sway),
+        // haciendo que el azul se vea naranja/marrón y el rojo se vea azul.
+        for pixel in canvas.chunks_exact_mut(4) {
+            pixel.swap(0, 2);
         }
 
         if let Some(ref surface_mode) = self.surface_mode {

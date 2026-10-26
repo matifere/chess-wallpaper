@@ -5,7 +5,7 @@
     <g id="fast_win">
       <g>
         <path class="icon-shadow" opacity="0.3" d="M9,.5a9,9,0,1,0,9,9A9,9,0,0,0,9,.5Z"></path>
-        <path class="icon-background" fill="#96af8b" d="M9,0a9,9,0,1,0,9,9A9,9,0,0,0,9,0Z"></path>
+        <path class="icon-background" fill="#8492a6" d="M9,0a9,9,0,1,0,9,9A9,9,0,0,0,9,0Z"></path>
       </g>
     </g>
     <g class="icon-component-shadow" opacity="0.2">

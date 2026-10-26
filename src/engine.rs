@@ -64,16 +64,16 @@ impl MoveClassification {
 
     pub fn bg_color(&self) -> SkColor {
         match self {
-            MoveClassification::Brilliant => SkColor::from_rgba8(38, 194, 163, 255), // #26c2a3 Cyan/Turquesa
-            MoveClassification::Great => SkColor::from_rgba8(92, 139, 176, 255),     // #5c8bb0 Azul acero
+            MoveClassification::Brilliant => SkColor::from_rgba8(38, 194, 163, 255), // #26c2a3 Cyan brillante
+            MoveClassification::Great => SkColor::from_rgba8(116, 155, 191, 255),    // #749bbf Azul acero oficial
             MoveClassification::Best => SkColor::from_rgba8(129, 182, 76, 255),      // #81b64c Verde Chess.com
             MoveClassification::Excellent => SkColor::from_rgba8(150, 188, 75, 255), // #96bc4b Verde claro
-            MoveClassification::Good => SkColor::from_rgba8(130, 168, 65, 230),      // Verde oliva
-            MoveClassification::Book => SkColor::from_rgba8(168, 139, 103, 255),     // #a88b67 Marrón pergamino
-            MoveClassification::Inaccuracy => SkColor::from_rgba8(240, 193, 92, 255),// #f0c15c Amarillo/ámbar
-            MoveClassification::Mistake => SkColor::from_rgba8(230, 145, 44, 255),   // #e6912c Naranja
+            MoveClassification::Good => SkColor::from_rgba8(119, 145, 95, 255),      // #77915f Verde oliva
+            MoveClassification::Book => SkColor::from_rgba8(213, 164, 125, 255),     // #d5a47d Marrón pergamino
+            MoveClassification::Inaccuracy => SkColor::from_rgba8(247, 198, 49, 255),// #f7c631 Amarillo
+            MoveClassification::Mistake => SkColor::from_rgba8(255, 164, 89, 255),   // #ffa459 Naranja vibrante
             MoveClassification::Blunder => SkColor::from_rgba8(250, 65, 45, 255),     // #fa412d Rojo carmesí
-            MoveClassification::Miss => SkColor::from_rgba8(195, 84, 133, 255),      // #c35485 Magenta oscuro
+            MoveClassification::Miss => SkColor::from_rgba8(255, 119, 105, 255),     // #ff7769 Coral perdida
         }
     }
 
