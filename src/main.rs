@@ -94,7 +94,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn draw(&mut self) {
-        if self.width == 0 || self.height == 0 || self.occlusion.is_occluded() {
+        if self.width == 0 || self.height == 0 {
             return;
         }
 
