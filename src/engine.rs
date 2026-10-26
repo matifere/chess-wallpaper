@@ -27,6 +27,7 @@ pub enum MoveClassification {
 }
 
 impl MoveClassification {
+    #[allow(dead_code)]
     pub fn symbol(&self) -> &'static str {
         match self {
             MoveClassification::Brilliant => "!!",
@@ -55,6 +56,10 @@ impl MoveClassification {
             MoveClassification::Blunder => "Grave error",
             MoveClassification::Miss => "Perdida",
         }
+    }
+
+    pub fn shows_on_board(&self) -> bool {
+        !matches!(self, MoveClassification::Good)
     }
 
     pub fn bg_color(&self) -> SkColor {

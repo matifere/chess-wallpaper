@@ -2,6 +2,8 @@ use fontdue::{Font, FontSettings};
 use shakmaty::{Color, Role};
 use tiny_skia::Pixmap;
 
+use crate::engine::MoveClassification;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BoardStyle {
     Blue,
@@ -161,6 +163,44 @@ macro_rules! load_board {
     };
 }
 
+macro_rules! load_badge {
+    ($path:literal) => {
+        Pixmap::decode_png(include_bytes!(concat!("../assets/badges/", $path, ".png"))).unwrap()
+    };
+}
+
+pub struct BadgeSet {
+    pub brilliant: Pixmap,
+    pub great: Pixmap,
+    pub best: Pixmap,
+    pub excellent: Pixmap,
+    pub good: Pixmap,
+    pub book: Pixmap,
+    pub inaccuracy: Pixmap,
+    pub mistake: Pixmap,
+    pub blunder: Pixmap,
+    pub miss: Pixmap,
+    #[allow(dead_code)]
+    pub forced: Pixmap,
+}
+
+impl BadgeSet {
+    pub fn get(&self, cls: MoveClassification) -> &Pixmap {
+        match cls {
+            MoveClassification::Brilliant => &self.brilliant,
+            MoveClassification::Great => &self.great,
+            MoveClassification::Best => &self.best,
+            MoveClassification::Excellent => &self.excellent,
+            MoveClassification::Good => &self.good,
+            MoveClassification::Book => &self.book,
+            MoveClassification::Inaccuracy => &self.inaccuracy,
+            MoveClassification::Mistake => &self.mistake,
+            MoveClassification::Blunder => &self.blunder,
+            MoveClassification::Miss => &self.miss,
+        }
+    }
+}
+
 pub struct AssetManager {
     // Tableros oficiales de Chess.com
     pub board_blue: Pixmap,
@@ -187,6 +227,9 @@ pub struct AssetManager {
     pub pieces_bubblegum: PieceSet,
     pub pieces_8_bit: PieceSet,
 
+    // Insignias oficiales de Chess.com Game Review
+    pub badges: BadgeSet,
+
     // Tipografía UI
     pub ui_font: Font,
 }
@@ -196,6 +239,20 @@ impl AssetManager {
         let font_bytes = include_bytes!("../assets/fonts/ui_font.ttf") as &[u8];
         let ui_font = Font::from_bytes(font_bytes, FontSettings::default())
             .expect("Error al decodificar la fuente UI embebida");
+
+        let badges = BadgeSet {
+            brilliant: load_badge!("brilliant"),
+            great: load_badge!("great"),
+            best: load_badge!("best"),
+            excellent: load_badge!("excellent"),
+            good: load_badge!("good"),
+            book: load_badge!("book"),
+            inaccuracy: load_badge!("inaccuracy"),
+            mistake: load_badge!("mistake"),
+            blunder: load_badge!("blunder"),
+            miss: load_badge!("miss"),
+            forced: load_badge!("forced"),
+        };
 
         Self {
             board_blue: load_board!("blue"),
@@ -221,6 +278,7 @@ impl AssetManager {
             pieces_bubblegum: load_pieces!("bubblegum"),
             pieces_8_bit: load_pieces!("8_bit"),
 
+            badges,
             ui_font,
         }
     }
@@ -255,5 +313,9 @@ impl AssetManager {
             PieceStyle::EightBit => &self.pieces_8_bit,
         };
         set.get(color, role)
+    }
+
+    pub fn get_badge(&self, cls: MoveClassification) -> &Pixmap {
+        self.badges.get(cls)
     }
 }

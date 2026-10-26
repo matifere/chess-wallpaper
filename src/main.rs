@@ -405,7 +405,10 @@ fn main() {
 
     let rotate_theme = args.contains("--rotate");
 
-    let bg_str: Option<String> = args.opt_value_from_str(["--bg", "--background"]).unwrap_or(None);
+    let bg_str: Option<String> = args
+        .opt_value_from_str("--bg")
+        .unwrap_or(None)
+        .or_else(|| args.opt_value_from_str("--background").unwrap_or(None));
     let bg_color = bg_str
         .as_deref()
         .and_then(parse_hex_color)

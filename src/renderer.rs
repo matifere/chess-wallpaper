@@ -377,18 +377,15 @@ fn draw_player_badge(
         let sub_w = measure_text(&assets.ui_font, sub_text, sub_font_size);
 
         if let Some(cls) = classification {
-            let symbol = cls.symbol();
             let label = cls.label();
-            let badge_text = if symbol.is_empty() {
-                label.to_string()
-            } else {
-                format!("{} {}", symbol, label)
-            };
             let badge_font_size = 10.0;
-            let badge_tw = measure_text(&assets.ui_font, &badge_text, badge_font_size);
-            let badge_pad_x = 7.0;
-            let badge_w = badge_tw + badge_pad_x * 2.0;
-            let badge_h = 18.0;
+            let label_tw = measure_text(&assets.ui_font, label, badge_font_size);
+
+            let icon_size = 15.0;
+            let badge_pad_x = 6.0;
+            let icon_text_gap = 5.0;
+            let badge_w = badge_pad_x + icon_size + icon_text_gap + label_tw + badge_pad_x;
+            let badge_h = 19.0;
 
             let badge_x = x + w - badge_w - right_pad;
             let badge_y = y + h * 0.58;
@@ -401,8 +398,36 @@ fn draw_player_badge(
                 canvas.fill_path(&path, &badge_bg, tiny_skia::FillRule::Winding, Transform::identity(), None);
             }
 
+            // Dibujar el icono oficial Chess.com
+            let badge_pixmap = assets.get_badge(cls);
+            let scale = icon_size / badge_pixmap.width() as f32;
+            let icon_x = badge_x + badge_pad_x;
+            let icon_y = badge_y + (badge_h - icon_size) / 2.0;
+            let transform = Transform::from_scale(scale, scale).post_translate(icon_x, icon_y);
+
+            canvas.draw_pixmap(
+                0,
+                0,
+                badge_pixmap.as_ref(),
+                &PixmapPaint {
+                    opacity: 1.0,
+                    blend_mode: tiny_skia::BlendMode::SourceOver,
+                    quality: tiny_skia::FilterQuality::Bilinear,
+                },
+                transform,
+                None,
+            );
+
             let badge_base_y = badge_y + badge_h * 0.74;
-            draw_text(canvas, &assets.ui_font, &badge_text, badge_x + badge_pad_x, badge_base_y, badge_font_size, cls.text_color());
+            draw_text(
+                canvas,
+                &assets.ui_font,
+                label,
+                icon_x + icon_size + icon_text_gap,
+                badge_base_y,
+                badge_font_size,
+                cls.text_color(),
+            );
 
             let sub_x = badge_x - sub_w - 8.0;
             let sub_baseline = y + h * 0.78;
@@ -693,58 +718,36 @@ pub fn render_frame(
         }
     }
 
-    // 9.1. Badge de jugada estilo Chess.com sobre la casilla de destino
+    // 9.1. Badge de jugada oficial de Chess.com sobre la casilla de destino
     if let (Some((_, to)), Some(cls)) = (sim.last_move, sim.current_classification) {
-        let to_f = to.0 as f32;
-        let to_r = to.1 as f32;
+        if cls.shows_on_board() {
+            let to_f = to.0 as f32;
+            let to_r = to.1 as f32;
 
-        let badge_radius = (tile_size * 0.16).clamp(8.0, 11.0);
-        let cx = board_x + to_f * tile_size + tile_size - badge_radius - 2.0;
-        let cy = board_y + (7.0 - to_r) * tile_size + badge_radius + 2.0;
+            // En Chess.com el badge mide ~32% del ancho de la casilla
+            let badge_size = (tile_size * 0.32).round().clamp(18.0, 32.0);
+            let bx = board_x + to_f * tile_size + tile_size - badge_size - 1.0;
+            let by = board_y + (7.0 - to_r) * tile_size + 1.0;
 
-        // Sombra suave del icono circular
-        let mut shadow_paint = Paint::default();
-        shadow_paint.set_color(SkColor::from_rgba8(0, 0, 0, 110));
-        let mut pb_shadow = PathBuilder::new();
-        if let Some(r) = Rect::from_xywh(cx - badge_radius - 1.0, cy - badge_radius + 1.5, badge_radius * 2.0 + 2.0, badge_radius * 2.0 + 2.0) {
-            pb_shadow.push_oval(r);
-            if let Some(path) = pb_shadow.finish() {
-                canvas.fill_path(&path, &shadow_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
-            }
-        }
+            let badge_pixmap = assets.get_badge(cls);
+            let scale_x = badge_size / badge_pixmap.width() as f32;
+            let scale_y = badge_size / badge_pixmap.height() as f32;
 
-        // Círculo del color oficial de Chess.com
-        let mut circle_paint = Paint::default();
-        circle_paint.set_color(cls.bg_color());
-        let mut pb_circ = PathBuilder::new();
-        if let Some(r) = Rect::from_xywh(cx - badge_radius, cy - badge_radius, badge_radius * 2.0, badge_radius * 2.0) {
-            pb_circ.push_oval(r);
-            if let Some(path) = pb_circ.finish() {
-                canvas.fill_path(&path, &circle_paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
-            }
-        }
+            let transform = Transform::from_scale(scale_x, scale_y)
+                .post_translate(bx, by);
 
-        // Borde fino blanco translúcido
-        let mut border_paint = Paint::default();
-        border_paint.set_color(SkColor::from_rgba8(255, 255, 255, 140));
-        let mut stroke = tiny_skia::Stroke::default();
-        stroke.width = 1.0;
-        let mut pb_b = PathBuilder::new();
-        if let Some(r) = Rect::from_xywh(cx - badge_radius, cy - badge_radius, badge_radius * 2.0, badge_radius * 2.0) {
-            pb_b.push_oval(r);
-            if let Some(path) = pb_b.finish() {
-                canvas.stroke_path(&path, &border_paint, &stroke, Transform::identity(), None);
-            }
-        }
-
-        // Símbolo del glifo (ej. !!, ★, ?!, ??, ✔)
-        let sym = cls.symbol();
-        if !sym.is_empty() {
-            let sym_font_size = (badge_radius * 1.1).round().clamp(8.0, 11.0);
-            let tw = measure_text(&assets.ui_font, sym, sym_font_size);
-            let tx = cx - tw / 2.0;
-            let ty = cy + sym_font_size * 0.36;
-            draw_text(canvas, &assets.ui_font, sym, tx, ty, sym_font_size, cls.text_color());
+            canvas.draw_pixmap(
+                0,
+                0,
+                badge_pixmap.as_ref(),
+                &PixmapPaint {
+                    opacity: 1.0,
+                    blend_mode: tiny_skia::BlendMode::SourceOver,
+                    quality: tiny_skia::FilterQuality::Bilinear,
+                },
+                transform,
+                None,
+            );
         }
     }
 
